@@ -1,0 +1,54 @@
+.productos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 20px;
+  justify-items: center;
+  align-items: start;
+}
+
+.product-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  text-align: center;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  padding: 15px;
+  width: 220px;
+  height: 320px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  background-color: white;
+}
+
+.product-card img {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  margin-bottom: 10px;
+}
+
+.product-card .sin-imagen {
+  width: 120px;
+  height: 120px;
+  background-color: #f2f2f2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #aaa;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+.product-card button {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+.product-card button:hover {
+  background-color: #218838;
+}

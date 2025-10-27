@@ -1,3 +1,4 @@
+// pages/Login.tsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -5,29 +6,45 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { PawPrint } from 'lucide-react';
+import { PawPrint, Loader2 } from 'lucide-react';
 
 const Login = () => {
-  const [documento, setDocumento] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!documento.trim()) {
-      toast.error('Por favor ingresa tu número de documento');
+    if (!username.trim() || !password.trim()) {
+      toast.error('Por favor completa todos los campos');
       return;
     }
 
-    const success = login(documento);
+    setLoading(true);
     
-    if (success) {
-      toast.success('¡Bienvenido!');
-      navigate('/dashboard');
-    } else {
-      toast.error('Documento no encontrado');
+    try {
+      const success = await login(username, password);
+      
+      if (success) {
+        toast.success('¡Bienvenido!');
+        navigate('/dashboard');
+      } else {
+        toast.error('Usuario o contraseña incorrectos');
+      }
+    } catch (error) {
+      toast.error('Error al iniciar sesión');
+    } finally {
+      setLoading(false);
     }
+  };
+
+  // Para demo rápida con documento
+  const handleQuickLogin = (user: string, pass: string) => {
+    setUsername(user);
+    setPassword(pass);
   };
 
   return (
@@ -45,25 +62,49 @@ const Login = () => {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <label htmlFor="documento" className="text-sm font-medium">
-                Número de Documento
+              <label htmlFor="username" className="text-sm font-medium">
+                Usuario
               </label>
               <Input
-                id="documento"
+                id="username"
                 type="text"
-                placeholder="Ingresa tu documento"
-                value={documento}
-                onChange={(e) => setDocumento(e.target.value)}
+                placeholder="Ingresa tu usuario"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                disabled={loading}
                 className="w-full"
               />
             </div>
-            <Button type="submit" className="w-full">
-              Iniciar Sesión
+            
+            <div className="space-y-2">
+              <label htmlFor="password" className="text-sm font-medium">
+                Contraseña
+              </label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Ingresa tu contraseña"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loading}
+                className="w-full"
+              />
+            </div>
+            
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Iniciando sesión...
+                </>
+              ) : (
+                'Iniciar Sesión'
+              )}
             </Button>
+            
             <div className="text-xs text-muted-foreground text-center space-y-1 pt-4">
-              <p>Usuarios de prueba:</p>
-              <p>Admin: 1234567890</p>
-              <p>Vendedor: 0987654321</p>
+              <p className="font-semibold">Para crear un usuario:</p>
+              <p className="text-[10px]">Usa la API en http://localhost:8000/auth/register</p>
             </div>
           </form>
         </CardContent>

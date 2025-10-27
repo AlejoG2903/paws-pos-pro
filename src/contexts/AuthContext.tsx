@@ -1,55 +1,86 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+// contexts/AuthContext.tsx
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { authAPI, saveAuthToken, removeAuthToken } from '@/lib/api';
 
-export type UserRole = 'admin' | 'vendedor';
-
-export interface User {
-  documento: string;
-  nombre: string;
-  role: UserRole;
+interface User {
+  id: number;
+  email: string;
+  username: string;
+  full_name: string;
+  role: 'admin' | 'cashier' | 'manager';
+  is_active: boolean;
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (documento: string) => boolean;
-  logout: () => void;
   isAuthenticated: boolean;
+  loading: boolean;
+  login: (username: string, password: string) => Promise<boolean>;
+  logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Usuarios predefinidos
-const USERS: User[] = [
-  { documento: '1234567890', nombre: 'Admin Principal', role: 'admin' },
-  { documento: '0987654321', nombre: 'Vendedor', role: 'vendedor' },
-];
-
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
+  // Verificar si hay un token guardado al cargar la app
   useEffect(() => {
-    const storedUser = localStorage.getItem('pos_user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
+    checkAuth();
   }, []);
 
-  const login = (documento: string): boolean => {
-    const foundUser = USERS.find(u => u.documento === documento);
-    if (foundUser) {
-      setUser(foundUser);
-      localStorage.setItem('pos_user', JSON.stringify(foundUser));
-      return true;
+  const checkAuth = async () => {
+    const token = localStorage.getItem('auth_token');
+    
+    if (!token) {
+      setLoading(false);
+      return;
     }
-    return false;
+
+    try {
+      const userData = await authAPI.getMe();
+      setUser(userData);
+    } catch (error) {
+      console.error('Error verificando autenticación:', error);
+      removeAuthToken();
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const login = async (username: string, password: string): Promise<boolean> => {
+    try {
+      const response = await authAPI.login(username, password);
+      saveAuthToken(response.access_token);
+      
+      // Obtener datos del usuario
+      const userData = await authAPI.getMe();
+      setUser(userData);
+      
+      return true;
+    } catch (error) {
+      console.error('Error en login:', error);
+      return false;
+    }
   };
 
   const logout = () => {
+    removeAuthToken();
     setUser(null);
-    localStorage.removeItem('pos_user');
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated: !!user,
+        loading,
+        login,
+        logout,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -58,7 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error('useAuth debe ser usado dentro de un AuthProvider');
   }
   return context;
 };

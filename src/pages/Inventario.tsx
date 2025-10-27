@@ -1,44 +1,99 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Layout from '@/components/Layout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getProductos, addProducto, updateProducto, deleteProducto } from '@/lib/storage';
-import { Producto, Categoria } from '@/types';
-import { Plus, Edit, Trash2, X } from 'lucide-react';
+import { productsAPI, categoriesAPI } from '@/lib/api';
+import { Plus, Edit, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
-const CATEGORIAS: Categoria[] = ['Alimento', 'Accesorio', 'Juguetes', 'Medicamentos', 'Higiene'];
+interface Category {
+  id: number;
+  name: string;
+  description?: string;
+}
+
+interface Product {
+  id: number;
+  name: string;
+  description?: string;
+  price: number;
+  cost: number;
+  stock: number;
+  barcode?: string;
+  category_id: number;
+  image_url?: string;
+  is_active: boolean;
+  category: Category;
+}
 
 const Inventario = () => {
-  const [productos, setProductos] = useState<Producto[]>(getProductos());
+  const [productos, setProductos] = useState<Product[]>([]);
+  const [categorias, setCategorias] = useState<Category[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<Producto | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
-    nombre: '',
-    precio: '',
+    name: '',
+    description: '',
+    price: '',
+    cost: '',
     stock: '',
-    categoria: '' as Categoria | '',
-    imagen: '',
+    category_id: '',
+    barcode: '',
+    image_url: '',
   });
 
+  // Cargar productos y categorías al montar el componente
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [productsData, categoriesData] = await Promise.all([
+        productsAPI.getAll(),
+        categoriesAPI.getAll(),
+      ]);
+      setProductos(productsData);
+      setCategorias(categoriesData);
+    } catch (error) {
+      toast.error('Error al cargar datos: ' + (error as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const resetForm = () => {
-    setFormData({ nombre: '', precio: '', stock: '', categoria: '', imagen: '' });
+    setFormData({
+      name: '',
+      description: '',
+      price: '',
+      cost: '',
+      stock: '',
+      category_id: '',
+      barcode: '',
+      image_url: '',
+    });
     setEditingProduct(null);
   };
 
-  const handleOpenModal = (producto?: Producto) => {
+  const handleOpenModal = (producto?: Product) => {
     if (producto) {
       setEditingProduct(producto);
       setFormData({
-        nombre: producto.nombre,
-        precio: producto.precio.toString(),
-        stock: producto.stock,
-        categoria: producto.categoria,
-        imagen: producto.imagen || '',
+        name: producto.name,
+        description: producto.description || '',
+        price: producto.price.toString(),
+        cost: producto.cost.toString(),
+        stock: producto.stock.toString(),
+        category_id: producto.category_id.toString(),
+        barcode: producto.barcode || '',
+        image_url: producto.image_url || '',
       });
     } else {
       resetForm();
@@ -51,42 +106,62 @@ const Inventario = () => {
     resetForm();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.nombre || !formData.precio || !formData.stock || !formData.categoria) {
-      toast.error('Por favor completa todos los campos');
+    if (!formData.name || !formData.price || !formData.category_id) {
+      toast.error('Por favor completa los campos obligatorios');
       return;
     }
 
-    const producto: Producto = {
-      id: editingProduct?.id || Date.now().toString(),
-      nombre: formData.nombre,
-      precio: parseFloat(formData.precio),
-      stock: formData.stock,
-      categoria: formData.categoria as Categoria,
-      imagen: formData.imagen || undefined,
-    };
+    try {
+      const productData = {
+        name: formData.name,
+        description: formData.description || undefined,
+        price: parseFloat(formData.price),
+        cost: parseFloat(formData.cost) || 0,
+        stock: parseInt(formData.stock) || 0,
+        category_id: parseInt(formData.category_id),
+        barcode: formData.barcode || undefined,
+        image_url: formData.image_url || undefined,
+      };
 
-    if (editingProduct) {
-      updateProducto(producto.id, producto);
-      toast.success('Producto actualizado');
-    } else {
-      addProducto(producto);
-      toast.success('Producto agregado');
+      if (editingProduct) {
+        await productsAPI.update(editingProduct.id, productData);
+        toast.success('Producto actualizado');
+      } else {
+        await productsAPI.create(productData);
+        toast.success('Producto agregado');
+      }
+
+      await loadData();
+      handleCloseModal();
+    } catch (error) {
+      toast.error('Error: ' + (error as Error).message);
     }
-
-    setProductos(getProductos());
-    handleCloseModal();
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: number) => {
     if (confirm('¿Estás seguro de eliminar este producto?')) {
-      deleteProducto(id);
-      setProductos(getProductos());
-      toast.success('Producto eliminado');
+      try {
+        await productsAPI.delete(id);
+        toast.success('Producto eliminado');
+        await loadData();
+      } catch (error) {
+        toast.error('Error al eliminar: ' + (error as Error).message);
+      }
     }
   };
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin" />
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -94,7 +169,9 @@ const Inventario = () => {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-3xl font-bold mb-2">Inventario</h2>
-            <p className="text-muted-foreground">Gestiona los productos de tu petshop</p>
+            <p className="text-muted-foreground">
+              Gestiona los productos de tu petshop
+            </p>
           </div>
           <Button onClick={() => handleOpenModal()}>
             <Plus className="w-4 h-4 mr-2" />
@@ -102,54 +179,73 @@ const Inventario = () => {
           </Button>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {productos.map((producto) => (
-            <Card key={producto.id}>
-              <CardContent className="p-4">
-                {producto.imagen && (
-                  <img
-                    src={producto.imagen}
-                    alt={producto.nombre}
-                    className="w-full h-48 object-cover rounded-md mb-4"
-                  />
-                )}
-                <div className="space-y-2">
-                  <h3 className="font-semibold text-lg">{producto.nombre}</h3>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Precio:</span>
-                    <span className="font-medium">${producto.precio.toLocaleString()}</span>
+        {productos.length === 0 ? (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <p className="text-muted-foreground">
+                No hay productos. Agrega tu primer producto.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {productos.map((producto) => (
+              <Card key={producto.id}>
+                <CardContent className="p-4">
+                  {producto.image_url && (
+                    <img
+                      src={producto.image_url}
+                      alt={producto.name}
+                      className="w-full h-48 object-cover rounded-md mb-4"
+                    />
+                  )}
+                  <div className="space-y-2">
+                    <h3 className="font-semibold text-lg">{producto.name}</h3>
+                    {producto.description && (
+                      <p className="text-sm text-muted-foreground">
+                        {producto.description}
+                      </p>
+                    )}
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Precio:</span>
+                      <span className="font-medium">
+                        ${producto.price.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Stock:</span>
+                      <span className="font-medium">{producto.stock}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Categoría:</span>
+                      <span className="font-medium">
+                        {producto.category.name}
+                      </span>
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => handleOpenModal(producto)}
+                      >
+                        <Edit className="w-4 h-4 mr-1" />
+                        Editar
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDelete(producto.id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Stock:</span>
-                    <span className="font-medium">{producto.stock}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Categoría:</span>
-                    <span className="font-medium">{producto.categoria}</span>
-                  </div>
-                  <div className="flex gap-2 pt-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => handleOpenModal(producto)}
-                    >
-                      <Edit className="w-4 h-4 mr-1" />
-                      Editar
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDelete(producto.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
 
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
           <DialogContent className="max-w-md">
@@ -160,49 +256,89 @@ const Inventario = () => {
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="nombre">Nombre del Producto</Label>
+                <Label htmlFor="name">Nombre del Producto *</Label>
                 <Input
-                  id="nombre"
-                  value={formData.nombre}
-                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
                   placeholder="Ej: Alimento Premium"
+                  required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="precio">Precio</Label>
+                <Label htmlFor="description">Descripción</Label>
                 <Input
-                  id="precio"
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
+                  placeholder="Descripción del producto"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="price">Precio *</Label>
+                  <Input
+                    id="price"
+                    type="number"
+                    step="0.01"
+                    value={formData.price}
+                    onChange={(e) =>
+                      setFormData({ ...formData, price: e.target.value })
+                    }
+                    placeholder="0"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="cost">Costo</Label>
+                  <Input
+                    id="cost"
+                    type="number"
+                    step="0.01"
+                    value={formData.cost}
+                    onChange={(e) =>
+                      setFormData({ ...formData, cost: e.target.value })
+                    }
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="stock">Stock</Label>
+                <Input
+                  id="stock"
                   type="number"
-                  value={formData.precio}
-                  onChange={(e) => setFormData({ ...formData, precio: e.target.value })}
+                  value={formData.stock}
+                  onChange={(e) =>
+                    setFormData({ ...formData, stock: e.target.value })
+                  }
                   placeholder="0"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="stock">Stock Disponible</Label>
-                <Input
-                  id="stock"
-                  value={formData.stock}
-                  onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                  placeholder="Ej: 15 unidades"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="categoria">Categoría</Label>
+                <Label htmlFor="category">Categoría *</Label>
                 <Select
-                  value={formData.categoria}
-                  onValueChange={(value) => setFormData({ ...formData, categoria: value as Categoria })}
+                  value={formData.category_id}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, category_id: value })
+                  }
                 >
-                  <SelectTrigger id="categoria">
+                  <SelectTrigger id="category">
                     <SelectValue placeholder="Selecciona una categoría" />
                   </SelectTrigger>
                   <SelectContent>
-                    {CATEGORIAS.map((cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat}
+                    {categorias.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id.toString()}>
+                        {cat.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -210,18 +346,37 @@ const Inventario = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="imagen">URL de Imagen (opcional)</Label>
+                <Label htmlFor="barcode">Código de Barras</Label>
                 <Input
-                  id="imagen"
+                  id="barcode"
+                  value={formData.barcode}
+                  onChange={(e) =>
+                    setFormData({ ...formData, barcode: e.target.value })
+                  }
+                  placeholder="123456789"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="image_url">URL de Imagen</Label>
+                <Input
+                  id="image_url"
                   type="url"
-                  value={formData.imagen}
-                  onChange={(e) => setFormData({ ...formData, imagen: e.target.value })}
+                  value={formData.image_url}
+                  onChange={(e) =>
+                    setFormData({ ...formData, image_url: e.target.value })
+                  }
                   placeholder="https://..."
                 />
               </div>
 
               <div className="flex gap-2 pt-4">
-                <Button type="button" variant="outline" onClick={handleCloseModal} className="flex-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCloseModal}
+                  className="flex-1"
+                >
                   Cancelar
                 </Button>
                 <Button type="submit" className="flex-1">

@@ -1,14 +1,39 @@
+// components/Layout.tsx
+import { ReactNode, useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Button } from './ui/button';
-import { LogOut, LayoutDashboard, Package, ShoppingCart, Moon, Sun, PawPrint } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import {
+  LayoutDashboard,
+  Package,
+  ShoppingCart,
+  LogOut,
+  PawPrint,
+  User,
+  Moon,
+  Sun,
+} from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import { useEffect, useState } from 'react';
 
-const Layout = ({ children }: { children: React.ReactNode }) => {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
+interface LayoutProps {
+  children: ReactNode;
+}
+
+const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  // 🌙 Tema oscuro/claro
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
   useEffect(() => {
@@ -32,64 +57,132 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     navigate('/login');
   };
 
-  const isActive = (path: string) => location.pathname === path;
+  const navItems = [
+    {
+      name: 'Dashboard',
+      path: '/dashboard',
+      icon: LayoutDashboard,
+    },
+    {
+      name: 'Inventario',
+      path: '/inventario',
+      icon: Package,
+      adminOnly: true,
+    },
+    {
+      name: 'Ventas',
+      path: '/ventas',
+      icon: ShoppingCart,
+    },
+  ];
+
+  const filteredNavItems = navItems.filter(
+    (item) => !item.adminOnly || user?.role === 'admin'
+  );
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-              <PawPrint className="w-6 h-6 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold">PawsPOS Pro</h1>
-              <p className="text-xs text-muted-foreground">
-                {user?.nombre} - {user?.role === 'admin' ? 'Administrador' : 'Vendedor'}
-              </p>
-            </div>
+      {/* Header */}
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container flex h-16 items-center justify-between">
+          <div className="flex items-center gap-6">
+            <Link to="/dashboard" className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                <PawPrint className="w-5 h-5 text-primary-foreground" />
+              </div>
+              <span className="font-bold text-lg">PawsPOS Pro</span>
+            </Link>
+
+            <nav className="hidden md:flex items-center gap-1">
+              {filteredNavItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = location.pathname === item.path;
+
+                return (
+                  <Link key={item.path} to={item.path}>
+                    <Button
+                      variant={isActive ? 'secondary' : 'ghost'}
+                      className={cn('gap-2', isActive && 'bg-secondary')}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {item.name}
+                    </Button>
+                  </Link>
+                );
+              })}
+            </nav>
           </div>
+
+          {/* User Menu + Tema */}
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={toggleTheme}>
-              {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              title={theme === 'light' ? 'Modo oscuro' : 'Modo claro'}
+            >
+              {theme === 'light' ? (
+                <Moon className="w-5 h-5" />
+              ) : (
+                <Sun className="w-5 h-5" />
+              )}
             </Button>
-            <Button variant="outline" onClick={handleLogout}>
-              <LogOut className="w-4 h-4 mr-2" />
-              Cerrar Sesión
-            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="gap-2">
+                  <User className="w-4 h-4" />
+                  <span className="hidden sm:inline">{user?.full_name}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>Mi Cuenta</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                  <p className="font-medium text-foreground">{user?.full_name}</p>
+                  <p className="text-xs">{user?.email}</p>
+                  <p className="text-xs capitalize mt-1">Rol: {user?.role}</p>
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={handleLogout}
+                  className="text-red-600"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Cerrar Sesión
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-6">
-        <nav className="flex gap-2 mb-6">
-          <Button
-            variant={isActive('/dashboard') ? 'default' : 'ghost'}
-            onClick={() => navigate('/dashboard')}
-          >
-            <LayoutDashboard className="w-4 h-4 mr-2" />
-            Dashboard
-          </Button>
-          {user?.role === 'admin' && (
-            <Button
-              variant={isActive('/inventario') ? 'default' : 'ghost'}
-              onClick={() => navigate('/inventario')}
-            >
-              <Package className="w-4 h-4 mr-2" />
-              Inventario
-            </Button>
-          )}
-          <Button
-            variant={isActive('/ventas') ? 'default' : 'ghost'}
-            onClick={() => navigate('/ventas')}
-          >
-            <ShoppingCart className="w-4 h-4 mr-2" />
-            Ventas
-          </Button>
-        </nav>
+      {/* Main Content */}
+      <main className="container py-6">{children}</main>
 
-        <main>{children}</main>
-      </div>
+      {/* Mobile Navigation */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t bg-background">
+        <div className="container flex items-center justify-around h-16">
+          {filteredNavItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.path;
+
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={cn(
+                  'flex flex-col items-center justify-center gap-1 flex-1 h-full',
+                  isActive ? 'text-primary' : 'text-muted-foreground'
+                )}
+              >
+                <Icon className="w-5 h-5" />
+                <span className="text-xs">{item.name}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 };
