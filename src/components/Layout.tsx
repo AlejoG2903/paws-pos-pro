@@ -76,9 +76,9 @@ const Layout = ({ children }: LayoutProps) => {
     },
   ];
 
-  const filteredNavItems = navItems.filter(
-    (item) => !item.adminOnly || user?.role === 'admin'
-  );
+const filteredNavItems = navItems.filter(
+  (item) => !item.adminOnly || user?.role?.toUpperCase() === 'ADMIN'
+);
 
   return (
     <div className="min-h-screen bg-background">

@@ -27,7 +27,7 @@ interface Product {
   category_id: number;
   image_url?: string;
   is_active: boolean;
-  category: Category;
+  category?: Category; // ✅ Hacer category opcional
 }
 
 const Inventario = () => {
@@ -59,7 +59,14 @@ const Inventario = () => {
         productsAPI.getAll(),
         categoriesAPI.getAll(),
       ]);
-      setProductos(productsData);
+      
+      // ✅ Asegurar que todos los productos tengan category definida
+      const productosSeguros = productsData.map((product: any) => ({
+        ...product,
+        category: product.category || { id: 0, name: 'Sin categoría', description: '' }
+      }));
+      
+      setProductos(productosSeguros);
       setCategorias(categoriesData);
     } catch (error) {
       toast.error('Error al cargar datos: ' + (error as Error).message);
@@ -153,6 +160,11 @@ const Inventario = () => {
     }
   };
 
+  // ✅ Función helper para obtener nombre de categoría segura
+  const getCategoryName = (producto: Product) => {
+    return producto?.category?.name || 'Sin categoría';
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -219,7 +231,8 @@ const Inventario = () => {
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Categoría:</span>
                       <span className="font-medium">
-                        {producto.category.name}
+                        {/* ✅ Usar la función segura en lugar de producto.category.name */}
+                        {getCategoryName(producto)}
                       </span>
                     </div>
                     <div className="flex gap-2 pt-2">

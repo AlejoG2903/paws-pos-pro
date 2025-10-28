@@ -19,9 +19,9 @@ const ProtectedRoute = ({ children, adminOnly = false }: { children: React.React
     return <Navigate to="/login" replace />;
   }
 
-  if (adminOnly && user?.role !== 'admin') {
-    return <Navigate to="/dashboard" replace />;
-  }
+if (adminOnly && user?.role?.toUpperCase() !== 'ADMIN') {
+  return <Navigate to="/dashboard" replace />;
+}
 
   return <>{children}</>;
 };
