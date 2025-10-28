@@ -25,7 +25,7 @@ import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Legend, Toolti
 
 // Colores para los gráficos
 const COLORS = {
-  efectivo: '#10b981',
+  cash: '#10b981',
   nequi: '#8b5cf6',
   daviplata: '#f59e0b',
   card: '#3b82f6',
@@ -112,13 +112,23 @@ const Dashboard = () => {
   };
 
   const ventasFiltradas = useMemo(() => {
-    const inicio = startOfDay(new Date(fechaInicio));
-    const fin = endOfDay(new Date(fechaFin));
+    // No filtrar si las ventas ya vienen vacías del backend
+    if (ventas.length === 0) return [];
+    
+    // Si estamos viendo "hoy", usar las ventas sin filtrar adicional
+    // ya que el backend ya las filtró correctamente
+    if (rangoSeleccionado === 'hoy') {
+      return ventas;
+    }
+    
+    const inicio = startOfDay(new Date(fechaInicio + 'T00:00:00'));
+    const fin = endOfDay(new Date(fechaFin + 'T23:59:59'));
+    
     return ventas.filter((venta) => {
       const fechaVenta = new Date(venta.created_at);
       return isWithinInterval(fechaVenta, { start: inicio, end: fin });
     });
-  }, [ventas, fechaInicio, fechaFin]);
+  }, [ventas, fechaInicio, fechaFin, rangoSeleccionado]);
 
   // Estadísticas generales
   const totalGeneral = ventasFiltradas.reduce((sum, venta) => sum + venta.total, 0);
@@ -128,7 +138,7 @@ const Dashboard = () => {
 
   // Métodos de pago para TODO el rango seleccionado
   const pagosPorMetodo = useMemo(() => {
-    const metodos = { efectivo: 0, nequi: 0, daviplata: 0, card: 0, transfer: 0 };
+    const metodos = { cash: 0, nequi: 0, daviplata: 0, card: 0, transfer: 0 };
     ventasFiltradas.forEach((venta) => {
       const metodo = venta.payment_method?.toLowerCase();
       if (metodos[metodo] !== undefined) {
@@ -153,8 +163,13 @@ const Dashboard = () => {
   const dataLineas = useMemo(() => {
     if (ventasFiltradas.length === 0) return [];
 
-    const inicio = new Date(fechaInicio);
-    const fin = new Date(fechaFin);
+    // Para "hoy", asegurar que usamos la fecha actual
+    const inicio = rangoSeleccionado === 'hoy' 
+      ? startOfDay(new Date())
+      : new Date(fechaInicio + 'T00:00:00');
+    const fin = rangoSeleccionado === 'hoy'
+      ? endOfDay(new Date())
+      : new Date(fechaFin + 'T23:59:59');
     
     // Generar todos los días del rango
     const todosLosDias = eachDayOfInterval({ start: inicio, end: fin });
@@ -185,14 +200,14 @@ const Dashboard = () => {
     });
 
     return ventasPorDia;
-  }, [ventasFiltradas, fechaInicio, fechaFin]);
+  }, [ventasFiltradas, fechaInicio, fechaFin, rangoSeleccionado]);
 
   // Datos para gráfico de barras (métodos de pago por día)
   const dataBarras = useMemo(() => {
     if (ventasFiltradas.length === 0) return [];
 
-    const inicio = new Date(fechaInicio);
-    const fin = new Date(fechaFin);
+    const inicio = new Date(fechaInicio + 'T00:00:00');
+    const fin = new Date(fechaFin + 'T23:59:59');
     const todosLosDias = eachDayOfInterval({ start: inicio, end: fin });
 
     return todosLosDias.map(dia => {
@@ -206,7 +221,7 @@ const Dashboard = () => {
       });
 
       // Calcular total por método de pago para este día
-      const metodos = { efectivo: 0, nequi: 0, daviplata: 0, card: 0, transfer: 0 };
+      const metodos = { cash: 0, nequi: 0, daviplata: 0, card: 0, transfer: 0 };
       ventasDelDia.forEach(venta => {
         const metodo = venta.payment_method?.toLowerCase();
         if (metodos[metodo] !== undefined) {
@@ -317,7 +332,7 @@ const Dashboard = () => {
             </CardContent>
           </Card>
 
-          {/* Métodos de pogo más usado */}
+          {/* Métodos de pago más usado */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Método Principal</CardTitle>

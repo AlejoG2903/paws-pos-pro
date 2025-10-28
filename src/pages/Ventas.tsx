@@ -342,7 +342,10 @@ export default function Ventas() {
                 <Button
                   className="w-full"
                   onClick={finalizarVenta}
-                  disabled={registrando}
+                  disabled={
+                    registrando ||
+                    (metodoPago === 'cash' && (!montoRecibido || parseFloat(montoRecibido) < total))
+                  }
                 >
                   {registrando ? (
                     <>
