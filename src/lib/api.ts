@@ -37,6 +37,36 @@ const fetchAPI = async (endpoint: string, options: RequestInit = {}) => {
   return response.json();
 };
 
+// ✅ NUEVA función helper para hacer requests con FormData (sin Content-Type)
+const fetchAPIWithFormData = async (endpoint: string, options: RequestInit = {}) => {
+  const token = getAuthToken();
+  
+  const headers: HeadersInit = {
+    ...options.headers,
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Error desconocido' }));
+    throw new Error(error.detail || 'Error en la petición');
+  }
+
+  // Para respuestas 204 No Content
+  if (response.status === 204) {
+    return null;
+  }
+
+  return response.json();
+};
+
 // AUTH
 export const authAPI = {
   login: async (username: string, password: string) => {
@@ -60,18 +90,18 @@ export const authAPI = {
   },
 
   getMe: async () => {
-    return fetchAPI('/users/me'); // ✅ Cambiado de /auth/me a /users/me
+    return fetchAPI('/users/me');
   },
 };
 
 // CATEGORIES
 export const categoriesAPI = {
   getAll: async () => {
-    return fetchAPI('/categories/'); // ✅ Mantiene el mismo endpoint
+    return fetchAPI('/categories/');
   },
 
   create: async (category: { name: string; description?: string }) => {
-    return fetchAPI('/categories/', { // ✅ Mantiene el mismo endpoint
+    return fetchAPI('/categories/', {
       method: 'POST',
       body: JSON.stringify(category),
     });
@@ -96,11 +126,11 @@ export const productsAPI = {
       });
     }
     const query = queryParams.toString();
-    return fetchAPI(`/products/${query ? `?${query}` : ''}`); // ✅ Mantiene el mismo endpoint
+    return fetchAPI(`/products/${query ? `?${query}` : ''}`);
   },
 
   getById: async (id: number) => {
-    return fetchAPI(`/products/${id}`); // ✅ Mantiene el mismo endpoint
+    return fetchAPI(`/products/${id}`);
   },
 
   create: async (product: {
@@ -113,9 +143,17 @@ export const productsAPI = {
     category_id: number;
     image_url?: string;
   }) => {
-    return fetchAPI('/products/', { // ✅ Mantiene el mismo endpoint
+    return fetchAPI('/products/', {
       method: 'POST',
       body: JSON.stringify(product),
+    });
+  },
+
+  // ✅ NUEVO: Crear producto con imagen
+  createWithImage: async (formData: FormData) => {
+    return fetchAPIWithFormData('/products/', {
+      method: 'POST',
+      body: formData,
     });
   },
 
@@ -130,14 +168,22 @@ export const productsAPI = {
     image_url: string;
     is_active: boolean;
   }>) => {
-    return fetchAPI(`/products/${id}`, { // ✅ Mantiene el mismo endpoint
+    return fetchAPI(`/products/${id}`, {
       method: 'PUT',
       body: JSON.stringify(product),
     });
   },
 
+  // ✅ NUEVO: Actualizar producto con imagen
+  updateWithImage: async (id: number, formData: FormData) => {
+    return fetchAPIWithFormData(`/products/${id}`, {
+      method: 'PUT',
+      body: formData,
+    });
+  },
+
   delete: async (id: number) => {
-    return fetchAPI(`/products/${id}`, { // ✅ Mantiene el mismo endpoint
+    return fetchAPI(`/products/${id}`, {
       method: 'DELETE',
     });
   },
@@ -166,15 +212,15 @@ export const salesAPI = {
       });
     }
     const query = queryParams.toString();
-    return fetchAPI(`/sales/${query ? `?${query}` : ''}`); // ✅ Mantiene el mismo endpoint
+    return fetchAPI(`/sales/${query ? `?${query}` : ''}`);
   },
 
   getTodaySummary: async () => {
-    return fetchAPI('/sales/?today=true&summary=true'); // ✅ Nuevo endpoint para resumen del día
+    return fetchAPI('/sales/?today=true&summary=true');
   },
 
   getById: async (id: number) => {
-    return fetchAPI(`/sales/${id}`); // ✅ Mantiene el mismo endpoint
+    return fetchAPI(`/sales/${id}`);
   },
 
   create: async (sale: {
@@ -189,7 +235,7 @@ export const salesAPI = {
     discount?: number;
     notes?: string;
   }) => {
-    return fetchAPI('/sales/', { // ✅ Mantiene el mismo endpoint
+    return fetchAPI('/sales/', {
       method: 'POST',
       body: JSON.stringify(sale),
     });
@@ -199,18 +245,18 @@ export const salesAPI = {
 // DASHBOARD
 export const dashboardAPI = {
   getStats: async () => {
-    return fetchAPI('/dashboard/stats'); // ✅ Nuevo endpoint específico para dashboard
+    return fetchAPI('/dashboard/stats');
   },
 
   getTodaySales: async () => {
-    return fetchAPI('/sales/?today=true'); // ✅ Alternativa para ventas de hoy
+    return fetchAPI('/sales/?today=true');
   },
 };
 
 // USERS (nuevo módulo)
 export const usersAPI = {
   getMe: async () => {
-    return fetchAPI('/users/me'); // ✅ Endpoint específico para usuario actual
+    return fetchAPI('/users/me');
   },
 
   updateProfile: async (userData: Partial<{

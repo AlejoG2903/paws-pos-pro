@@ -1,3 +1,7 @@
+// ============================================================================
+// DASHBOARD COMPLETO - Archivo único con todos los componentes
+// ============================================================================
+
 import { useEffect, useState, useMemo } from 'react';
 import Layout from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,39 +16,539 @@ import {
   isWithinInterval, 
   addDays,
   subMonths,
-  eachDayOfInterval,
-  isSameMonth 
+  eachDayOfInterval 
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { salesAPI } from '@/lib/api';
 import { toast } from 'sonner';
-import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Legend, Tooltip, LineChart as RechartsLine, Line, XAxis, YAxis, CartesianGrid, BarChart, Bar } from 'recharts';
+import { 
+  PieChart as RechartsPie, 
+  Pie, 
+  Cell, 
+  ResponsiveContainer, 
+  Legend, 
+  Tooltip, 
+  LineChart as RechartsLine, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  BarChart, 
+  Bar 
+} from 'recharts';
 
-// Colores para los gráficos
+// ============================================================================
+// CONSTANTES Y TIPOS
+// ============================================================================
+
 const COLORS = {
-  cash: '#10b981',
+  efectivo: '#10b981',
   nequi: '#8b5cf6',
   daviplata: '#f59e0b',
   card: '#3b82f6',
   transfer: '#ec4899'
 };
 
+interface Sale {
+  id: number;
+  created_at: string;
+  user?: {
+    full_name: string;
+  };
+  payment_method: string;
+  total: number;
+  items?: Array<{
+    product_name: string;
+    quantity: number;
+    subtotal: number;
+  }>;
+}
+
+interface PaymentData {
+  name: string;
+  value: number;
+  color: string;
+}
+
+interface DailyData {
+  fecha: string;
+  fechaCompleta: string;
+  total: number;
+  cantidad: number;
+  diaSemana: string;
+}
+
+interface ProductData {
+  nombre: string;
+  cantidad: number;
+  total: number;
+}
+
+// ============================================================================
+// COMPONENTE: StatsCards
+// ============================================================================
+
+interface StatsCardsProps {
+  totalHoy: number;
+  ventasHoyLength: number;
+  loadingHoy: boolean;
+  totalGeneral: number;
+  cantidadVentas: number;
+  promedioVenta: number;
+  metodoPrincipal: PaymentData | null;
+}
+
+const StatsCards = ({
+  totalHoy,
+  ventasHoyLength,
+  loadingHoy,
+  totalGeneral,
+  cantidadVentas,
+  promedioVenta,
+  metodoPrincipal
+}: StatsCardsProps) => {
+  return (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {/* Ventas del día */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Ventas del Día</CardTitle>
+          <DollarSign className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          {loadingHoy ? (
+            <p className="text-sm text-muted-foreground">Cargando...</p>
+          ) : (
+            <>
+              <div className="text-2xl font-bold">${totalHoy.toLocaleString()}</div>
+              <p className="text-xs text-muted-foreground">{ventasHoyLength} ventas realizadas</p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Total del período */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Total del Período</CardTitle>
+          <TrendingUp className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">${totalGeneral.toLocaleString()}</div>
+          <p className="text-xs text-muted-foreground">{cantidadVentas} ventas totales</p>
+        </CardContent>
+      </Card>
+
+      {/* Promedio por venta */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Promedio por Venta</CardTitle>
+          <CreditCard className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          <div className="text-2xl font-bold">${promedioVenta.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+          <p className="text-xs text-muted-foreground">Valor promedio por transacción</p>
+        </CardContent>
+      </Card>
+
+      {/* Métodos de pago más usado */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-sm font-medium">Método Principal</CardTitle>
+          <CreditCard className="h-4 w-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent>
+          {metodoPrincipal ? (
+            <>
+              <div className="text-2xl font-bold capitalize">{metodoPrincipal.name}</div>
+              <p className="text-xs text-muted-foreground">
+                ${metodoPrincipal.value.toLocaleString()} total
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="text-2xl font-bold">-</div>
+              <p className="text-xs text-muted-foreground">Sin datos</p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+// ============================================================================
+// COMPONENTE: DateRangeSelector
+// ============================================================================
+
+interface DateRangeSelectorProps {
+  rangoSeleccionado: string;
+  fechaInicio: string;
+  fechaFin: string;
+  onRangoChange: (rango: string) => void;
+  onFechaInicioChange: (fecha: string) => void;
+  onFechaFinChange: (fecha: string) => void;
+}
+
+const DateRangeSelector = ({
+  rangoSeleccionado,
+  fechaInicio,
+  fechaFin,
+  onRangoChange,
+  onFechaInicioChange,
+  onFechaFinChange
+}: DateRangeSelectorProps) => {
+  return (
+    <Card>
+      <CardContent className="pt-6">
+        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Rango de fechas:</span>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <Select value={rangoSeleccionado} onValueChange={onRangoChange}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Seleccionar rango" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="hoy">Hoy</SelectItem>
+                <SelectItem value="semana">Última semana</SelectItem>
+                <SelectItem value="mes">Este mes</SelectItem>
+                <SelectItem value="mes_anterior">Mes anterior</SelectItem>
+                <SelectItem value="personalizado">Personalizado</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            {rangoSeleccionado === 'personalizado' && (
+              <div className="flex gap-2">
+                <Input
+                  type="date"
+                  value={fechaInicio}
+                  onChange={(e) => onFechaInicioChange(e.target.value)}
+                  className="w-full sm:w-auto"
+                />
+                <Input
+                  type="date"
+                  value={fechaFin}
+                  onChange={(e) => onFechaFinChange(e.target.value)}
+                  className="w-full sm:w-auto"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+// ============================================================================
+// COMPONENTE: PaymentMethodsChart
+// ============================================================================
+
+interface PaymentMethodsChartProps {
+  data: PaymentData[];
+  totalGeneral: number;
+}
+
+const PaymentMethodsChart = ({ data, totalGeneral }: PaymentMethodsChartProps) => {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Distribución por Método de Pago</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Porcentaje de ventas según método de pago utilizado en el período seleccionado
+        </p>
+      </CardHeader>
+      <CardContent>
+        {data.length === 0 ? (
+          <div className="h-80 flex items-center justify-center text-muted-foreground">
+            No hay datos disponibles para el rango seleccionado
+          </div>
+        ) : (
+          <div className="grid lg:grid-cols-2 gap-6">
+            <ResponsiveContainer width="100%" height={400}>
+              <RechartsPie>
+                <Pie
+                  data={data}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={120}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {data.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value: number) => [`$${value.toLocaleString()}`, 'Total']} />
+                <Legend />
+              </RechartsPie>
+            </ResponsiveContainer>
+            
+            {/* Detalles de métodos de pago */}
+            <div className="space-y-4">
+              <h4 className="font-semibold">Detalles por Método</h4>
+              {data.map((item) => (
+                <div key={item.name} className="flex justify-between items-center p-3 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div 
+                      className="w-4 h-4 rounded" 
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <span className="font-medium capitalize">{item.name}</span>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold">${item.value.toLocaleString()}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {((item.value / totalGeneral) * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+// ============================================================================
+// COMPONENTE: DailyTrendChart
+// ============================================================================
+
+interface DailyTrendChartProps {
+  data: DailyData[];
+}
+
+const DailyTrendChart = ({ data }: DailyTrendChartProps) => {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Tendencia de Ventas Diarias</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Evolución diaria de las ventas en el período seleccionado
+        </p>
+      </CardHeader>
+      <CardContent>
+        {data.length === 0 ? (
+          <div className="h-80 flex items-center justify-center text-muted-foreground">
+            No hay datos disponibles para el rango seleccionado
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={400}>
+            <RechartsLine data={data}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis 
+                dataKey="fecha" 
+                tick={{ fontSize: 12 }}
+                angle={-45}
+                textAnchor="end"
+                height={80}
+              />
+              <YAxis 
+                tick={{ fontSize: 12 }}
+                tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+              />
+              <Tooltip 
+                formatter={(value: number) => [`$${value.toLocaleString()}`, 'Total']}
+                labelFormatter={(label) => `Fecha: ${label}`}
+              />
+              <Legend />
+              <Line 
+                type="monotone" 
+                dataKey="total" 
+                stroke="#3b82f6" 
+                strokeWidth={2}
+                name="Ventas del Día"
+                dot={{ r: 4 }}
+                activeDot={{ r: 6 }}
+              />
+            </RechartsLine>
+          </ResponsiveContainer>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+// ============================================================================
+// COMPONENTE: TopProductsChart
+// ============================================================================
+
+interface TopProductsChartProps {
+  data: ProductData[];
+}
+
+const TopProductsChart = ({ data }: TopProductsChartProps) => {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Top 10 Productos Más Vendidos</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Productos con mayor cantidad vendida en el período seleccionado
+        </p>
+      </CardHeader>
+      <CardContent>
+        {data.length === 0 ? (
+          <div className="h-80 flex items-center justify-center text-muted-foreground">
+            No hay datos disponibles para el rango seleccionado
+          </div>
+        ) : (
+          <div className="grid lg:grid-cols-2 gap-6">
+            {/* Gráfico de barras */}
+            <ResponsiveContainer width="100%" height={400}>
+              <BarChart data={data} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" tick={{ fontSize: 12 }} />
+                <YAxis 
+                  type="category" 
+                  dataKey="nombre" 
+                  tick={{ fontSize: 11 }}
+                  width={120}
+                />
+                <Tooltip 
+                  formatter={(value: number, name: string) => {
+                    if (name === 'cantidad') return [value, 'Unidades'];
+                    return [`$${value.toLocaleString()}`, 'Total'];
+                  }}
+                />
+                <Legend />
+                <Bar 
+                  dataKey="cantidad" 
+                  fill="#8b5cf6" 
+                  name="Cantidad Vendida"
+                  radius={[0, 4, 4, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+
+            {/* Lista detallada */}
+            <div className="space-y-3">
+              <h4 className="font-semibold">Detalle de Productos</h4>
+              <div className="space-y-2 max-h-[360px] overflow-y-auto">
+                {data.map((item, index) => (
+                  <div 
+                    key={item.nombre} 
+                    className="flex justify-between items-center p-3 border rounded-lg hover:bg-muted/50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-sm">
+                        {index + 1}
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">{item.nombre}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.cantidad} unidades
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-sm">${item.total.toLocaleString()}</div>
+                      <div className="text-xs text-muted-foreground">
+                        ${(item.total / item.cantidad).toLocaleString(undefined, { maximumFractionDigits: 0 })} c/u
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+// ============================================================================
+// COMPONENTE: SalesTable
+// ============================================================================
+
+interface SalesTableProps {
+  ventas: Sale[];
+  loading: boolean;
+  fechaInicio: string;
+  fechaFin: string;
+}
+
+const SalesTable = ({ ventas, loading, fechaInicio, fechaFin }: SalesTableProps) => {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Detalle de Ventas</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          {format(new Date(fechaInicio), "dd 'de' MMMM", { locale: es })} - {format(new Date(fechaFin), "dd 'de' MMMM yyyy", { locale: es })}
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="rounded-md border">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b bg-muted/50">
+                  <th className="px-4 py-3 text-left text-sm font-medium">Fecha</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">Vendedor</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">Método</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                      Cargando ventas...
+                    </td>
+                  </tr>
+                ) : ventas.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                      No hay ventas en este rango de fechas
+                    </td>
+                  </tr>
+                ) : (
+                  ventas.map((venta) => (
+                    <tr key={venta.id} className="border-b hover:bg-muted/50">
+                      <td className="px-4 py-3 text-sm">
+                        {format(new Date(venta.created_at), 'dd/MM/yyyy HH:mm', { locale: es })}
+                      </td>
+                      <td className="px-4 py-3 text-sm">{venta.user?.full_name || '—'}</td>
+                      <td className="px-4 py-3 text-sm capitalize">{venta.payment_method}</td>
+                      <td className="px-4 py-3 text-sm text-right font-medium">
+                        ${venta.total.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+// ============================================================================
+// COMPONENTE PRINCIPAL: Dashboard
+// ============================================================================
+
 const Dashboard = () => {
+  // Estados
   const [fechaInicio, setFechaInicio] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [fechaFin, setFechaFin] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
   const [rangoSeleccionado, setRangoSeleccionado] = useState('mes');
-  const [ventas, setVentas] = useState<any[]>([]);
-  const [ventasHoy, setVentasHoy] = useState<any[]>([]);
+  const [ventas, setVentas] = useState<Sale[]>([]);
+  const [ventasHoy, setVentasHoy] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingHoy, setLoadingHoy] = useState(false);
 
-  // Obtener fechas del mes actual
-  const mesInicio = startOfMonth(new Date());
-  const mesFin = endOfMonth(new Date());
-
+  // Cargar ventas del rango seleccionado
   useEffect(() => {
     const fetchVentas = async () => {
       try {
@@ -65,6 +569,7 @@ const Dashboard = () => {
     fetchVentas();
   }, [fechaInicio, fechaFin]);
 
+  // Cargar ventas de hoy
   useEffect(() => {
     const fetchVentasHoy = async () => {
       try {
@@ -111,15 +616,10 @@ const Dashboard = () => {
     }
   };
 
+  // Filtrar ventas
   const ventasFiltradas = useMemo(() => {
-    // No filtrar si las ventas ya vienen vacías del backend
     if (ventas.length === 0) return [];
-    
-    // Si estamos viendo "hoy", usar las ventas sin filtrar adicional
-    // ya que el backend ya las filtró correctamente
-    if (rangoSeleccionado === 'hoy') {
-      return ventas;
-    }
+    if (rangoSeleccionado === 'hoy') return ventas;
     
     const inicio = startOfDay(new Date(fechaInicio + 'T00:00:00'));
     const fin = endOfDay(new Date(fechaFin + 'T23:59:59'));
@@ -136,9 +636,9 @@ const Dashboard = () => {
   const cantidadVentas = ventasFiltradas.length;
   const promedioVenta = cantidadVentas > 0 ? totalGeneral / cantidadVentas : 0;
 
-  // Métodos de pago para TODO el rango seleccionado
+  // Métodos de pago
   const pagosPorMetodo = useMemo(() => {
-    const metodos = { cash: 0, nequi: 0, daviplata: 0, card: 0, transfer: 0 };
+    const metodos = { efectivo: 0, nequi: 0, daviplata: 0, card: 0, transfer: 0 };
     ventasFiltradas.forEach((venta) => {
       const metodo = venta.payment_method?.toLowerCase();
       if (metodos[metodo] !== undefined) {
@@ -148,7 +648,7 @@ const Dashboard = () => {
     return metodos;
   }, [ventasFiltradas]);
 
-  // Datos para el gráfico de torta (TODO el rango)
+  // Datos para gráfico de torta
   const dataPie = useMemo(() => {
     return Object.entries(pagosPorMetodo)
       .filter(([_, valor]) => valor > 0)
@@ -159,11 +659,10 @@ const Dashboard = () => {
       }));
   }, [pagosPorMetodo]);
 
-  // Datos para el gráfico de líneas (TODO el rango por día)
+  // Datos para gráfico de líneas
   const dataLineas = useMemo(() => {
     if (ventasFiltradas.length === 0) return [];
 
-    // Para "hoy", asegurar que usamos la fecha actual
     const inicio = rangoSeleccionado === 'hoy' 
       ? startOfDay(new Date())
       : new Date(fechaInicio + 'T00:00:00');
@@ -171,10 +670,8 @@ const Dashboard = () => {
       ? endOfDay(new Date())
       : new Date(fechaFin + 'T23:59:59');
     
-    // Generar todos los días del rango
     const todosLosDias = eachDayOfInterval({ start: inicio, end: fin });
     
-    // Crear estructura inicial con todos los días
     const ventasPorDia = todosLosDias.map(dia => {
       const fechaStr = format(dia, 'dd/MM', { locale: es });
       return {
@@ -186,10 +683,8 @@ const Dashboard = () => {
       };
     });
 
-    // Agrupar ventas por día
     ventasFiltradas.forEach(venta => {
       const fechaVenta = new Date(venta.created_at);
-      const fechaStr = format(fechaVenta, 'dd/MM', { locale: es });
       const fechaCompleta = format(fechaVenta, 'yyyy-MM-dd');
       
       const diaEncontrado = ventasPorDia.find(dia => dia.fechaCompleta === fechaCompleta);
@@ -202,40 +697,32 @@ const Dashboard = () => {
     return ventasPorDia;
   }, [ventasFiltradas, fechaInicio, fechaFin, rangoSeleccionado]);
 
-  // Datos para gráfico de barras (métodos de pago por día)
-  const dataBarras = useMemo(() => {
-    if (ventasFiltradas.length === 0) return [];
+  // Datos para top 10 productos
+  const topProductos = useMemo(() => {
+    const productosMap = new Map<string, { cantidad: number; total: number }>();
 
-    const inicio = new Date(fechaInicio + 'T00:00:00');
-    const fin = new Date(fechaFin + 'T23:59:59');
-    const todosLosDias = eachDayOfInterval({ start: inicio, end: fin });
-
-    return todosLosDias.map(dia => {
-      const fechaStr = format(dia, 'dd/MM', { locale: es });
-      const fechaCompleta = format(dia, 'yyyy-MM-dd');
-      
-      // Filtrar ventas de este día
-      const ventasDelDia = ventasFiltradas.filter(venta => {
-        const fechaVenta = format(new Date(venta.created_at), 'yyyy-MM-dd');
-        return fechaVenta === fechaCompleta;
-      });
-
-      // Calcular total por método de pago para este día
-      const metodos = { cash: 0, nequi: 0, daviplata: 0, card: 0, transfer: 0 };
-      ventasDelDia.forEach(venta => {
-        const metodo = venta.payment_method?.toLowerCase();
-        if (metodos[metodo] !== undefined) {
-          metodos[metodo] += venta.total;
-        }
-      });
-
-      return {
-        fecha: fechaStr,
-        ...metodos,
-        total: ventasDelDia.reduce((sum, venta) => sum + venta.total, 0)
-      };
+    ventasFiltradas.forEach(venta => {
+      if (venta.items && Array.isArray(venta.items)) {
+        venta.items.forEach(item => {
+          const nombre = item.product_name || 'Producto sin nombre';
+          const existing = productosMap.get(nombre) || { cantidad: 0, total: 0 };
+          productosMap.set(nombre, {
+            cantidad: existing.cantidad + item.quantity,
+            total: existing.total + item.subtotal
+          });
+        });
+      }
     });
-  }, [ventasFiltradas, fechaInicio, fechaFin]);
+
+    return Array.from(productosMap.entries())
+      .map(([nombre, data]) => ({
+        nombre,
+        cantidad: data.cantidad,
+        total: data.total
+      }))
+      .sort((a, b) => b.cantidad - a.cantidad)
+      .slice(0, 10);
+  }, [ventasFiltradas]);
 
   return (
     <Layout>
@@ -246,292 +733,54 @@ const Dashboard = () => {
         </div>
 
         {/* Selector de rango */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Rango de fechas:</span>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                <Select value={rangoSeleccionado} onValueChange={handleRangoChange}>
-                  <SelectTrigger className="w-full sm:w-[180px]">
-                    <SelectValue placeholder="Seleccionar rango" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="hoy">Hoy</SelectItem>
-                    <SelectItem value="semana">Última semana</SelectItem>
-                    <SelectItem value="mes">Este mes</SelectItem>
-                    <SelectItem value="mes_anterior">Mes anterior</SelectItem>
-                    <SelectItem value="personalizado">Personalizado</SelectItem>
-                  </SelectContent>
-                </Select>
-                
-                {rangoSeleccionado === 'personalizado' && (
-                  <div className="flex gap-2">
-                    <Input
-                      type="date"
-                      value={fechaInicio}
-                      onChange={(e) => setFechaInicio(e.target.value)}
-                      className="w-full sm:w-auto"
-                    />
-                    <Input
-                      type="date"
-                      value={fechaFin}
-                      onChange={(e) => setFechaFin(e.target.value)}
-                      className="w-full sm:w-auto"
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <DateRangeSelector
+          rangoSeleccionado={rangoSeleccionado}
+          fechaInicio={fechaInicio}
+          fechaFin={fechaFin}
+          onRangoChange={handleRangoChange}
+          onFechaInicioChange={setFechaInicio}
+          onFechaFinChange={setFechaFin}
+        />
 
-        {/* Tarjetas principales */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {/* Ventas del día */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Ventas del Día</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {loadingHoy ? (
-                <p className="text-sm text-muted-foreground">Cargando...</p>
-              ) : (
-                <>
-                  <div className="text-2xl font-bold">${totalHoy.toLocaleString()}</div>
-                  <p className="text-xs text-muted-foreground">{ventasHoy.length} ventas realizadas</p>
-                </>
-              )}
-            </CardContent>
-          </Card>
+        {/* Tarjetas de estadísticas */}
+        <StatsCards
+          totalHoy={totalHoy}
+          ventasHoyLength={ventasHoy.length}
+          loadingHoy={loadingHoy}
+          totalGeneral={totalGeneral}
+          cantidadVentas={cantidadVentas}
+          promedioVenta={promedioVenta}
+          metodoPrincipal={dataPie[0] || null}
+        />
 
-          {/* Total del período */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total del Período</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">${totalGeneral.toLocaleString()}</div>
-              <p className="text-xs text-muted-foreground">{cantidadVentas} ventas totales</p>
-            </CardContent>
-          </Card>
-
-          {/* Promedio por venta */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Promedio por Venta</CardTitle>
-              <CreditCard className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">${promedioVenta.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-              <p className="text-xs text-muted-foreground">Valor promedio por transacción</p>
-            </CardContent>
-          </Card>
-
-          {/* Métodos de pago más usado */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Método Principal</CardTitle>
-              <CreditCard className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              {dataPie.length > 0 ? (
-                <>
-                  <div className="text-2xl font-bold capitalize">{dataPie[0]?.name}</div>
-                  <p className="text-xs text-muted-foreground">
-                    ${dataPie[0]?.value.toLocaleString()} total
-                  </p>
-                </>
-              ) : (
-                <>
-                  <div className="text-2xl font-bold">-</div>
-                  <p className="text-xs text-muted-foreground">Sin datos</p>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Tabs con Tabla y Gráficos */}
+        {/* Tabs con gráficos */}
         <Tabs defaultValue="metodos" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="metodos">🥧 Métodos de Pago</TabsTrigger>
             <TabsTrigger value="tendencia">📈 Tendencia Diaria</TabsTrigger>
+            <TabsTrigger value="productos">🏆 Top Productos</TabsTrigger>
             <TabsTrigger value="tabla">📊 Detalle de Ventas</TabsTrigger>
           </TabsList>
 
-          {/* Pestaña de Gráfico de Torta */}
           <TabsContent value="metodos">
-            <Card>
-              <CardHeader>
-                <CardTitle>Distribución por Método de Pago</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Porcentaje de ventas según método de pago utilizado en el período seleccionado
-                </p>
-              </CardHeader>
-              <CardContent>
-                {dataPie.length === 0 ? (
-                  <div className="h-80 flex items-center justify-center text-muted-foreground">
-                    No hay datos disponibles para el rango seleccionado
-                  </div>
-                ) : (
-                  <div className="grid lg:grid-cols-2 gap-6">
-                    <ResponsiveContainer width="100%" height={400}>
-                      <RechartsPie>
-                        <Pie
-                          data={dataPie}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                          outerRadius={120}
-                          fill="#8884d8"
-                          dataKey="value"
-                        >
-                          {dataPie.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip formatter={(value: number) => [`$${value.toLocaleString()}`, 'Total']} />
-                        <Legend />
-                      </RechartsPie>
-                    </ResponsiveContainer>
-                    
-                    {/* Detalles de métodos de pago */}
-                    <div className="space-y-4">
-                      <h4 className="font-semibold">Detalles por Método</h4>
-                      {dataPie.map((item, index) => (
-                        <div key={item.name} className="flex justify-between items-center p-3 border rounded-lg">
-                          <div className="flex items-center gap-3">
-                            <div 
-                              className="w-4 h-4 rounded" 
-                              style={{ backgroundColor: item.color }}
-                            />
-                            <span className="font-medium capitalize">{item.name}</span>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-bold">${item.value.toLocaleString()}</div>
-                            <div className="text-sm text-muted-foreground">
-                              {((item.value / totalGeneral) * 100).toFixed(1)}%
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <PaymentMethodsChart data={dataPie} totalGeneral={totalGeneral} />
           </TabsContent>
 
-          {/* Pestaña de Gráfico de Líneas */}
           <TabsContent value="tendencia">
-            <Card>
-              <CardHeader>
-                <CardTitle>Tendencia de Ventas Diarias</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Evolución diaria de las ventas en el período seleccionado
-                </p>
-              </CardHeader>
-              <CardContent>
-                {dataLineas.length === 0 ? (
-                  <div className="h-80 flex items-center justify-center text-muted-foreground">
-                    No hay datos disponibles para el rango seleccionado
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height={400}>
-                    <RechartsLine data={dataLineas}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis 
-                        dataKey="fecha" 
-                        tick={{ fontSize: 12 }}
-                        angle={-45}
-                        textAnchor="end"
-                        height={80}
-                      />
-                      <YAxis 
-                        tick={{ fontSize: 12 }}
-                        tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
-                      />
-                      <Tooltip 
-                        formatter={(value: number) => [`$${value.toLocaleString()}`, 'Total']}
-                        labelFormatter={(label) => `Fecha: ${label}`}
-                      />
-                      <Legend />
-                      <Line 
-                        type="monotone" 
-                        dataKey="total" 
-                        stroke="#3b82f6" 
-                        strokeWidth={2}
-                        name="Ventas del Día"
-                        dot={{ r: 4 }}
-                        activeDot={{ r: 6 }}
-                      />
-                    </RechartsLine>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
+            <DailyTrendChart data={dataLineas} />
           </TabsContent>
 
-          {/* Pestaña de Tabla */}
+          <TabsContent value="productos">
+            <TopProductsChart data={topProductos} />
+          </TabsContent>
+
           <TabsContent value="tabla">
-            <Card>
-              <CardHeader>
-                <CardTitle>Detalle de Ventas</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  {format(new Date(fechaInicio), "dd 'de' MMMM", { locale: es })} - {format(new Date(fechaFin), "dd 'de' MMMM yyyy", { locale: es })}
-                </p>
-              </CardHeader>
-              <CardContent>
-                <div className="rounded-md border">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b bg-muted/50">
-                          <th className="px-4 py-3 text-left text-sm font-medium">Fecha</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium">Vendedor</th>
-                          <th className="px-4 py-3 text-left text-sm font-medium">Método</th>
-                          <th className="px-4 py-3 text-right text-sm font-medium">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {loading ? (
-                          <tr>
-                            <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                              Cargando ventas...
-                            </td>
-                          </tr>
-                        ) : ventasFiltradas.length === 0 ? (
-                          <tr>
-                            <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                              No hay ventas en este rango de fechas
-                            </td>
-                          </tr>
-                        ) : (
-                          ventasFiltradas.map((venta) => (
-                            <tr key={venta.id} className="border-b hover:bg-muted/50">
-                              <td className="px-4 py-3 text-sm">
-                                {format(new Date(venta.created_at), 'dd/MM/yyyy HH:mm', { locale: es })}
-                              </td>
-                              <td className="px-4 py-3 text-sm">{venta.user?.full_name || '—'}</td>
-                              <td className="px-4 py-3 text-sm capitalize">{venta.payment_method}</td>
-                              <td className="px-4 py-3 text-sm text-right font-medium">
-                                ${venta.total.toLocaleString()}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <SalesTable 
+              ventas={ventasFiltradas} 
+              loading={loading} 
+              fechaInicio={fechaInicio} 
+              fechaFin={fechaFin} 
+            />
           </TabsContent>
         </Tabs>
       </div>
