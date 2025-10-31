@@ -21,7 +21,7 @@ import {
 import { es } from 'date-fns/locale';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { salesAPI } from '@/lib/api';
+import { salesAPI, productsAPI } from '@/lib/api';
 import { toast } from 'sonner';
 import { 
   PieChart as RechartsPie, 
@@ -47,8 +47,6 @@ const COLORS = {
   efectivo: '#10b981',
   nequi: '#8b5cf6',
   daviplata: '#f59e0b',
-  card: '#3b82f6',
-  transfer: '#ec4899'
 };
 
 interface Sale {
@@ -467,6 +465,80 @@ const TopProductsChart = ({ data }: TopProductsChartProps) => {
 };
 
 // ============================================================================
+// COMPONENTE: GananciasTable
+// ============================================================================
+
+interface GananciaRow {
+  nombre: string;
+  costo?: number | null;
+  precio?: number | null;
+  cantidad: number;
+  ganancia?: number | null; // ganancia total = (precio - costo) * cantidad
+}
+
+interface GananciasTableProps {
+  fechaInicio: string;
+  fechaFin: string;
+  data: GananciaRow[];
+  loading: boolean;
+}
+
+const GananciasTable = ({ fechaInicio, fechaFin, data, loading }: GananciasTableProps) => {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Ganancias por Producto</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          {format(new Date(fechaInicio), "dd 'de' MMMM", { locale: es })} - {format(new Date(fechaFin), "dd 'de' MMMM yyyy", { locale: es })}
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="rounded-md border">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b bg-muted/50">
+                  <th className="px-4 py-3 text-left text-sm font-medium">Nombre Producto</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">Costo</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">Precio</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium">Total Vendidos</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium">Ganancia</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                      Cargando datos...
+                    </td>
+                  </tr>
+                ) : data.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                      No hay datos de ganancias en este rango
+                    </td>
+                  </tr>
+                ) : (
+                  data.map((row) => (
+                    <tr key={row.nombre} className="border-b hover:bg-muted/50">
+                      <td className="px-4 py-3 text-sm">{row.nombre}</td>
+                      <td className="px-4 py-3 text-sm">{row.costo != null ? `$${row.costo.toLocaleString()}` : '—'}</td>
+                      <td className="px-4 py-3 text-sm">{row.precio != null ? `$${row.precio.toLocaleString()}` : '—'}</td>
+                      <td className="px-4 py-3 text-right text-sm">{row.cantidad}</td>
+                      <td className="px-4 py-3 text-right text-sm font-medium">{row.ganancia != null ? `$${row.ganancia.toLocaleString()}` : '—'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+// ============================================================================
 // COMPONENTE: SalesTable
 // ============================================================================
 
@@ -491,41 +563,48 @@ const SalesTable = ({ ventas, loading, fechaInicio, fechaFin }: SalesTableProps)
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="px-4 py-3 text-left text-sm font-medium">Fecha</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">Vendedor</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">Método</th>
-                  <th className="px-4 py-3 text-right text-sm font-medium">Total</th>
-                </tr>
+               <tr className="border-b bg-muted/50">
+                          <th className="px-4 py-3 text-left text-sm font-medium">Fecha</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium">Vendedor</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium">Método de pago</th>
+                          <th className="px-4 py-3 text-left text-sm font-medium">Productos vendidos</th>
+                          <th className="px-4 py-3 text-right text-sm font-medium">Total</th>
+                        </tr>
               </thead>
               <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                      Cargando ventas...
-                    </td>
-                  </tr>
-                ) : ventas.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                      No hay ventas en este rango de fechas
-                    </td>
-                  </tr>
-                ) : (
-                  ventas.map((venta) => (
-                    <tr key={venta.id} className="border-b hover:bg-muted/50">
-                      <td className="px-4 py-3 text-sm">
-                        {format(new Date(venta.created_at), 'dd/MM/yyyy HH:mm', { locale: es })}
-                      </td>
-                      <td className="px-4 py-3 text-sm">{venta.user?.full_name || '—'}</td>
-                      <td className="px-4 py-3 text-sm capitalize">{venta.payment_method}</td>
-                      <td className="px-4 py-3 text-sm text-right font-medium">
-                        ${venta.total.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
+  {loading ? (
+    <tr>
+      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+        Cargando ventas...
+      </td>
+    </tr>
+  ) : ventas.length === 0 ? (
+    <tr>
+      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+        No hay ventas en este rango de fechas
+      </td>
+    </tr>
+  ) : (
+    ventas.map((venta) => (
+      <tr key={venta.id} className="border-b hover:bg-muted/50">
+        <td className="px-4 py-3 text-sm">
+          {format(new Date(venta.created_at), 'dd/MM/yyyy HH:mm', { locale: es })}
+        </td>
+        <td className="px-4 py-3 text-sm">{venta.user?.full_name || '—'}</td>
+        <td className="px-4 py-3 text-sm capitalize">{venta.payment_method}</td>
+        <td className="px-4 py-3 text-sm">
+          {venta.items && venta.items.length > 0
+            ? venta.items.map(item => `${item.product_name} x${item.quantity}`).join(', ')
+            : '—'}
+        </td>
+        <td className="px-4 py-3 text-right text-sm font-medium">
+          ${venta.total.toLocaleString()}
+        </td>
+      </tr>
+    ))
+  )}
+</tbody>
+
             </table>
           </div>
         </div>
@@ -547,6 +626,9 @@ const Dashboard = () => {
   const [ventasHoy, setVentasHoy] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingHoy, setLoadingHoy] = useState(false);
+  // Inventario
+  const [productosInv, setProductosInv] = useState<any[]>([]);
+  const [loadingProductos, setLoadingProductos] = useState(false);
 
   // Cargar ventas del rango seleccionado
   useEffect(() => {
@@ -585,6 +667,25 @@ const Dashboard = () => {
     };
 
     fetchVentasHoy();
+  }, []);
+
+  // Cargar productos del inventario (para calcular costos y precios)
+  useEffect(() => {
+    const fetchProductos = async () => {
+      try {
+        setLoadingProductos(true);
+        // Traer un listado amplio (backend soporta skip/limit si es necesario)
+        const data = await productsAPI.getAll({ limit: 1000 });
+        setProductosInv(data || []);
+      } catch (error: any) {
+        console.error(error);
+        toast.error(error.message || 'Error cargando los productos');
+      } finally {
+        setLoadingProductos(false);
+      }
+    };
+
+    fetchProductos();
   }, []);
 
   // Manejar cambio de rango
@@ -713,6 +814,7 @@ const Dashboard = () => {
         });
       }
     });
+    
 
     return Array.from(productosMap.entries())
       .map(([nombre, data]) => ({
@@ -723,6 +825,63 @@ const Dashboard = () => {
       .sort((a, b) => b.cantidad - a.cantidad)
       .slice(0, 10);
   }, [ventasFiltradas]);
+  
+  // Mapa rápido del inventario: name (lowercase) -> { price, cost }
+  const inventarioMap = useMemo(() => {
+    const map = new Map<string, { price?: number | null; cost?: number | null }>();
+    productosInv.forEach((p) => {
+      const name = (p.name || p.nombre || '').toString().toLowerCase();
+      map.set(name, {
+        price: p.price ?? p.precio ?? null,
+        cost: p.cost ?? p.costo ?? null,
+      });
+    });
+    return map;
+  }, [productosInv]);
+
+  // Datos para la tabla de ganancias
+  const gananciasData = useMemo(() => {
+    const agg = new Map<string, { nombreOriginal?: string; cantidad: number; totalSales: number; unitPrice?: number | null }>();
+
+    ventasFiltradas.forEach((venta) => {
+      if (venta.items && Array.isArray(venta.items)) {
+        venta.items.forEach((item) => {
+          const nombre = item.product_name || 'Producto sin nombre';
+          const key = nombre.toLowerCase();
+          const existing = agg.get(key) || { nombreOriginal: nombre, cantidad: 0, totalSales: 0, unitPrice: null };
+
+          existing.cantidad += item.quantity;
+          existing.totalSales += item.subtotal;
+          if (existing.unitPrice == null && item.quantity) {
+            existing.unitPrice = item.subtotal / item.quantity;
+          }
+
+          agg.set(key, existing);
+        });
+      }
+    });
+
+    const rows: GananciaRow[] = Array.from(agg.entries()).map(([key, v]) => {
+      const inv = inventarioMap.get(key);
+      const precio = inv?.price ?? v.unitPrice ?? null;
+      const costo = inv?.cost ?? null;
+      const gananciaUnit = precio != null && costo != null ? (precio - costo) : null;
+      const gananciaTotal = gananciaUnit != null ? gananciaUnit * v.cantidad : null;
+
+      return {
+        nombre: v.nombreOriginal || key,
+        costo,
+        precio,
+        cantidad: v.cantidad,
+        ganancia: gananciaTotal,
+      };
+    });
+
+    // Ordenar por ganancia total descendente, nulos al final
+    rows.sort((a, b) => (b.ganancia ?? -Infinity) - (a.ganancia ?? -Infinity));
+    return rows;
+  }, [ventasFiltradas, inventarioMap]);
+  
 
   return (
     <Layout>
@@ -754,12 +913,13 @@ const Dashboard = () => {
         />
 
         {/* Tabs con gráficos */}
-        <Tabs defaultValue="metodos" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="metodos">🥧 Métodos de Pago</TabsTrigger>
+        <Tabs defaultValue="tabla" className="w-full">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="tabla">🧾 Detalle de Ventas</TabsTrigger>
+            <TabsTrigger value="metodos">💳 Métodos de Pago</TabsTrigger>
             <TabsTrigger value="tendencia">📈 Tendencia Diaria</TabsTrigger>
-            <TabsTrigger value="productos">🏆 Top Productos</TabsTrigger>
-            <TabsTrigger value="tabla">📊 Detalle de Ventas</TabsTrigger>
+            <TabsTrigger value="productos">🔝 Top Productos</TabsTrigger>
+            <TabsTrigger value="ganancias">💰 Ganancias</TabsTrigger>
           </TabsList>
 
           <TabsContent value="metodos">
@@ -774,6 +934,14 @@ const Dashboard = () => {
             <TopProductsChart data={topProductos} />
           </TabsContent>
 
+          <TabsContent value="ganancias">
+            <GananciasTable
+              fechaInicio={fechaInicio}
+              fechaFin={fechaFin}
+              data={gananciasData}
+              loading={loading || loadingProductos}
+            />
+          </TabsContent>
           <TabsContent value="tabla">
             <SalesTable 
               ventas={ventasFiltradas} 
@@ -787,5 +955,4 @@ const Dashboard = () => {
     </Layout>
   );
 };
-
 export default Dashboard;

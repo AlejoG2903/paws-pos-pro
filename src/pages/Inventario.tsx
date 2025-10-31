@@ -12,14 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { productsAPI, categoriesAPI } from '@/lib/api';
-import {
-  Plus,
-  Edit,
-  Trash2,
-  Loader2,
-  Upload,
-  X,
-} from 'lucide-react';
+import { Plus, Edit, Trash2, Loader2, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -39,13 +32,13 @@ interface Product {
   name: string;
   description?: string;
   price: number;
-  cost: number;
+  cost: string;
   stock: number;
   barcode?: string;
   category_id: number;
-  image_url?: string | null;
   image_base64?: string | null;
   is_active: boolean;
+  unidad_medida?: string; // 👈 agregado
   category?: Category;
 }
 
@@ -63,6 +56,7 @@ const Inventario = () => {
     price: '',
     cost: '',
     stock: '',
+    unit: 'unidad', // 👈 valor por defecto
     category_id: '',
     barcode: '',
   });
@@ -107,6 +101,7 @@ const Inventario = () => {
       price: '',
       cost: '',
       stock: '',
+      unit: 'unidad', // 👈 reiniciar también
       category_id: '',
       barcode: '',
     });
@@ -125,14 +120,12 @@ const Inventario = () => {
         price: producto.price.toString(),
         cost: producto.cost.toString(),
         stock: producto.stock.toString(),
+        unit: producto.unidad_medida || 'unidad', // 👈 nuevo
         category_id: producto.category_id.toString(),
         barcode: producto.barcode || '',
       });
 
-      // Mostrar imagen ya existente
-      if (producto.image_url) {
-        setImagePreview(producto.image_url);
-      } else if (producto.image_base64) {
+      if (producto.image_base64) {
         setImagePreview(`data:image/jpeg;base64,${producto.image_base64}`);
       } else {
         setImagePreview(null);
@@ -148,7 +141,7 @@ const Inventario = () => {
     resetForm();
   };
 
-  // 🖼️ Subir nueva imagen
+  // 🖼️ Subir imagen
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -190,6 +183,7 @@ const Inventario = () => {
       formDataToSend.append('price', formData.price);
       formDataToSend.append('cost', formData.cost || '0');
       formDataToSend.append('stock', formData.stock || '0');
+      formDataToSend.append('unidad_medida', formData.unit); // 👈 agregado
       formDataToSend.append('category_id', formData.category_id);
 
       if (formData.description)
@@ -226,7 +220,6 @@ const Inventario = () => {
     }
   };
 
-  // 📦 Obtener nombre de categoría
   const getCategoryName = (producto: Product) => {
     const categoria = categorias.find(
       (cat) => cat.id === producto.category_id
@@ -234,15 +227,12 @@ const Inventario = () => {
     return categoria ? categoria.name : 'Sin categoría';
   };
 
-  // 🖼️ Obtener imagen del producto
   const getProductImage = (producto: Product) => {
-    if (producto.image_url) return producto.image_url;
     if (producto.image_base64)
       return `data:image/jpeg;base64,${producto.image_base64}`;
-    return '/placeholder-image.png'; // Imagen por defecto
+    return '/placeholder-image.png';
   };
 
-  // 🌀 Loader mientras carga
   if (loading) {
     return (
       <Layout>
@@ -253,7 +243,6 @@ const Inventario = () => {
     );
   }
 
-  // 🧩 Render principal
   return (
     <Layout>
       <div className="space-y-6">
@@ -290,34 +279,26 @@ const Inventario = () => {
                     className="w-full h-48 object-cover rounded-md mb-4 bg-gray-100"
                   />
                   <div className="space-y-2">
-                    <h3 className="font-semibold text-lg">
-                      {producto.name}
-                    </h3>
+                    <h3 className="font-semibold text-lg">{producto.name}</h3>
                     {producto.description && (
                       <p className="text-sm text-muted-foreground">
                         {producto.description}
                       </p>
                     )}
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">
-                        Precio:
-                      </span>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Precio:</span>
                       <span className="font-medium">
                         ${producto.price.toLocaleString()}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">
-                        Stock:
-                      </span>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Stock:</span>
                       <span className="font-medium">
-                        {producto.stock}
+                        {producto.stock} {producto.unidad_medida || 'unidad'}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">
-                        Categoría:
-                      </span>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Categoría:</span>
                       <span className="font-medium">
                         {getCategoryName(producto)}
                       </span>
@@ -347,14 +328,12 @@ const Inventario = () => {
           </div>
         )}
 
-        {/* 🧾 Modal de Crear/Editar */}
+        {/* 🧾 Modal */}
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
           <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
-                {editingProduct
-                  ? 'Editar Producto'
-                  : 'Agregar Producto'}
+                {editingProduct ? 'Editar Producto' : 'Agregar Producto'}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
@@ -383,9 +362,6 @@ const Inventario = () => {
                       <span className="text-sm text-muted-foreground">
                         Click para subir imagen
                       </span>
-                      <span className="text-xs text-muted-foreground mt-1">
-                        PNG, JPG, WEBP (máx. 5MB)
-                      </span>
                       <input
                         type="file"
                         accept="image/*"
@@ -404,10 +380,7 @@ const Inventario = () => {
                   id="name"
                   value={formData.name}
                   onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      name: e.target.value,
-                    })
+                    setFormData({ ...formData, name: e.target.value })
                   }
                   placeholder="Ej: Alimento Premium"
                   required
@@ -420,49 +393,76 @@ const Inventario = () => {
                   id="description"
                   value={formData.description}
                   onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      description: e.target.value,
-                    })
+                    setFormData({ ...formData, description: e.target.value })
                   }
                   placeholder="Descripción del producto"
                 />
               </div>
 
               <div className="space-y-2">
-                <div className="space-y-2">
-                  <Label htmlFor="price">Precio *</Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    step="0.01"
-                    value={formData.price}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        price: e.target.value,
-                      })
-                    }
-                    placeholder="0"
-                    required
-                  />
-                </div>
+                <Label htmlFor="price">Precio *</Label>
+                <Input
+                  id="price"
+                  type="number"
+                  step="0.01"
+                  value={formData.price}
+                  onChange={(e) =>
+                    setFormData({ ...formData, price: e.target.value })
+                  }
+                  placeholder="0"
+                  required
+                />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="stock">Stock</Label>
+                <Label htmlFor="cost">Costo</Label>
                 <Input
-                  id="stock"
+                  id="cost"
                   type="number"
-                  value={formData.stock}
+                  step="0.01"
+                  value={formData.cost}
                   onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      stock: e.target.value,
-                    })
+                    setFormData({ ...formData, cost: e.target.value })
                   }
                   placeholder="0"
                 />
+              </div>
+
+              {/* Stock + unidad */}
+              <div className="space-y-2">
+                <Label htmlFor="stock">Stock</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="stock"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={formData.stock}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/\D/g, '');
+                      setFormData({ ...formData, stock: value });
+                    }}
+                    placeholder="0"
+                    className="flex-1"
+                  />
+
+                  <Select
+                    value={formData.unit}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, unit: value })
+                    }
+                  >
+                    <SelectTrigger className="w-[110px]">
+                      <SelectValue placeholder="unidad" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unidad">Unidad</SelectItem>
+                      <SelectItem value="kg">Kg</SelectItem>
+                      <SelectItem value="lb">Lb</SelectItem>
+                      <SelectItem value="gr">Gr</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -470,10 +470,7 @@ const Inventario = () => {
                 <Select
                   value={formData.category_id}
                   onValueChange={(value) =>
-                    setFormData({
-                      ...formData,
-                      category_id: value,
-                    })
+                    setFormData({ ...formData, category_id: value })
                   }
                 >
                   <SelectTrigger id="category">
@@ -481,16 +478,14 @@ const Inventario = () => {
                   </SelectTrigger>
                   <SelectContent>
                     {categorias.map((cat) => (
-                      <SelectItem
-                        key={cat.id}
-                        value={cat.id.toString()}
-                      >
+                      <SelectItem key={cat.id} value={cat.id.toString()}>
                         {cat.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+
               <div className="flex gap-2 pt-4">
                 <Button
                   type="button"
@@ -500,10 +495,7 @@ const Inventario = () => {
                 >
                   Cancelar
                 </Button>
-                <Button
-                  onClick={handleSubmit}
-                  className="flex-1"
-                >
+                <Button onClick={handleSubmit} className="flex-1">
                   {editingProduct ? 'Actualizar' : 'Agregar'}
                 </Button>
               </div>

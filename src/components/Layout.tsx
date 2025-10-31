@@ -87,16 +87,17 @@ const filteredNavItems = navItems.filter(
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-6">
             <Link to="/dashboard" className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-                <PawPrint className="w-5 h-5 text-primary-foreground" />
+              <div className="w-12 h-12 rounded-full overflow-hidden flex items-center justify-center bg-white shadow">
+              <img src="/Logo.png" alt="Logo" className="object-cover w-full h-full"/>
               </div>
-              <span className="font-bold text-lg">PawsPOS Pro</span>
+              <span className="font-bold text-lg">Mascotas de Impacto</span>
             </Link>
 
             <nav className="hidden md:flex items-center gap-1">
               {filteredNavItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = location.pathname === item.path;
+
 
                 return (
                   <Link key={item.path} to={item.path}>

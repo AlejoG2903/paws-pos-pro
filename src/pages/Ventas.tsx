@@ -15,9 +15,9 @@ interface Producto {
   price: number;
   cost: number;
   stock: number;
+  unidad_medida: string;
   barcode?: string;
   category_id: number;
-  image_url?: string | null;
   image_base64?: string | null;
   is_active: boolean;
 }
@@ -224,7 +224,7 @@ export default function Ventas() {
                   />
                   <div className="font-medium text-base">{producto.name}</div>
                   <div className="text-sm text-gray-500 mb-2">
-                    ${producto.price.toLocaleString('es-CO', { minimumFractionDigits: 0 })} / Stock: {producto.stock}
+                   ${producto.price.toLocaleString('es-CO', { minimumFractionDigits: 0 })} / Stock: {producto.stock} {producto.unidad_medida || 'unidad'}
                   </div>
                   <Button
                     className="w-full mt-auto"
@@ -256,7 +256,7 @@ export default function Ventas() {
                   <div>
                     <div className="font-medium">{item.producto.name}</div>
                     <div className="text-sm text-gray-500">
-                      ${item.producto.price.toLocaleString('es-CO')} c/u
+                     ${item.producto.price.toLocaleString('es-CO')} / {item.producto.unidad_medida || 'unidad'}
                     </div>
                     <div className="text-sm font-semibold mt-1">
                       Subtotal: ${(item.producto.price * item.cantidad).toLocaleString('es-CO')}
