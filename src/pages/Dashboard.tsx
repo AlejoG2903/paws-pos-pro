@@ -923,9 +923,61 @@ const Dashboard = () => {
           </TabsList>
 
           <TabsContent value="metodos">
-            <PaymentMethodsChart data={dataPie} totalGeneral={totalGeneral} />
-          </TabsContent>
+        <Card>
+          <CardHeader>
+            <CardTitle>Detalle de Métodos de Pago</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Distribución de ventas según el método de pago utilizado
+            </p>
+          </CardHeader>
 
+          <CardContent>
+            {dataPie.length === 0 ? (
+              <div className="h-80 flex items-center justify-center text-muted-foreground">
+                No hay datos disponibles para el rango seleccionado
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {dataPie.map((item) => (
+                  <div
+                    key={item.name}
+                    className="flex justify-between items-center p-4 border rounded-xl shadow-sm hover:shadow-md transition-all"
+                  >
+                    {/* Sección izquierda: logo + nombre */}
+                    <div className="flex items-center gap-4">
+                      {/* Logo del método de pago */}
+                      <img
+                        src={
+                          item.name.toLowerCase().includes("nequi")
+                            ? "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRIccx8LJNvtf7I-2_NzuKc2P_nuoK3zOtCVQ&s"
+                            : item.name.toLowerCase().includes("daviplata")
+                            ? "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRcOVARb8dTyXOjCf_xvmXk6lO-wWgVyL7f5Uh_cDHUxMX6HyZAuI2SJETktJ0FxgwEfBo&usqp=CAU"
+                            : item.name.toLowerCase().includes("efectivo") || item.name.toLowerCase().includes("cash")
+                            ? "https://cdn-icons-png.flaticon.com/512/2331/2331941.png"
+                            : item.name.toLowerCase().includes("tarjeta") || item.name.toLowerCase().includes("card")
+                            ? "https://cdn-icons-png.flaticon.com/512/2331/2331941.png"
+                            : "https://cdn-icons-png.flaticon.com/512/2331/2331941.png"
+                        }
+                        alt={item.name}
+                        className="w-10 h-10 object-contain rounded-full border"
+                      />
+                      <span className="font-medium capitalize">{item.name}</span>
+                    </div>
+
+                    {/* Sección derecha: valores */}
+                    <div className="text-right">
+                      <div className="font-bold text-lg">${item.value.toLocaleString()}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {((item.value / totalGeneral) * 100).toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </TabsContent>
           <TabsContent value="tendencia">
             <DailyTrendChart data={dataLineas} />
           </TabsContent>
