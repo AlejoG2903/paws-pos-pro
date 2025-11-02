@@ -42,7 +42,7 @@ import {
 const COLORS = {
   efectivo: '#10b981',
   nequi: '#8b5cf6',
-  daviplata: '#f59e0b',
+  daviplata: '#f70800ff',
   card: '#60a5fa',
   transfer: '#f97316'
 };
