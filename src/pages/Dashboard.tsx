@@ -1,8 +1,12 @@
+// ============================================================================
+// DASHBOARD COMPLETO - Archivo único con todos los componentes
+// ============================================================================
+
 import { useEffect, useState, useMemo } from 'react';
 import Layout from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DollarSign, TrendingUp, CreditCard, Calendar } from 'lucide-react';
+import { DollarSign, TrendingUp, CreditCard, Calendar, PiggyBank } from 'lucide-react';
 import {
   format,
   startOfMonth,
@@ -12,7 +16,7 @@ import {
   isWithinInterval,
   addDays,
   subMonths,
-  eachDayOfInterval
+  eachDayOfInterval,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Input } from '@/components/ui/input';
@@ -20,31 +24,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { salesAPI, productsAPI } from '@/lib/api';
 import { toast } from 'sonner';
 import {
-  PieChart as RechartsPie,
-  Pie,
-  Cell,
   ResponsiveContainer,
-  Legend,
+  CartesianGrid,
   Tooltip,
+  Legend,
   LineChart as RechartsLine,
   Line,
   XAxis,
   YAxis,
-  CartesianGrid,
   BarChart,
-  Bar
+  Bar,
 } from 'recharts';
 
 // ============================================================================
-// CONSTANTES Y TIPOS
+// TIPOS Y CONSTANTES
 // ============================================================================
 
-const COLORS = {
+const COLORS: Record<string, string> = {
   efectivo: '#10b981',
   nequi: '#8b5cf6',
-  daviplata: '#f70800ff',
-  card: '#60a5fa',
-  transfer: '#f97316'
+  daviplata: '#f59e0b',
 };
 
 interface Sale {
@@ -53,7 +52,7 @@ interface Sale {
   user?: { full_name: string };
   payment_method: string;
   total: number;
-  items?: Array<{ product_name: string; quantity: number; subtotal: number }>;
+  items?: { product_name: string; quantity: number; subtotal: number }[];
 }
 
 interface PaymentData {
@@ -76,6 +75,17 @@ interface ProductData {
   total: number;
 }
 
+interface Product {
+  id?: number;
+  name?: string;
+  nombre?: string;
+  price?: number;
+  precio?: number;
+  cost?: number;
+  costo?: number;
+  [key: string]: unknown;
+}
+
 interface GananciaRow {
   nombre: string;
   costo?: number | null;
@@ -85,19 +95,7 @@ interface GananciaRow {
 }
 
 // ============================================================================
-// HELPERS
-// ============================================================================
-
-const formatMoney = (v?: number | null) => {
-  if (v == null || Number.isNaN(Number(v))) return '0';
-  return new Intl.NumberFormat('es-CO', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(Math.round(Number(v)));
-};
-
-// ============================================================================
-// STATS CARDS
+// COMPONENTE: StatsCards
 // ============================================================================
 
 interface StatsCardsProps {
@@ -106,8 +104,9 @@ interface StatsCardsProps {
   loadingHoy: boolean;
   totalGeneral: number;
   cantidadVentas: number;
-  totalGanancias: number;
+  promedioVenta: number;
   metodoPrincipal: PaymentData | null;
+  gananciaTotal: number;
 }
 
 const StatsCards = ({
@@ -116,11 +115,13 @@ const StatsCards = ({
   loadingHoy,
   totalGeneral,
   cantidadVentas,
-  totalGanancias,
-  metodoPrincipal
+  promedioVenta,
+  metodoPrincipal,
+  gananciaTotal,
 }: StatsCardsProps) => {
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {/* Ventas del día */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">Ventas del Día</CardTitle>
@@ -131,35 +132,40 @@ const StatsCards = ({
             <p className="text-sm text-muted-foreground">Cargando...</p>
           ) : (
             <>
-              <div className="text-2xl font-bold">${formatMoney(totalHoy)}</div>
+              <div className="text-2xl font-bold">${totalHoy.toLocaleString()}</div>
               <p className="text-xs text-muted-foreground">{ventasHoyLength} ventas realizadas</p>
             </>
           )}
         </CardContent>
       </Card>
 
+      {/* Total del período */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">Total del Período</CardTitle>
           <TrendingUp className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">${formatMoney(totalGeneral)}</div>
+          <div className="text-2xl font-bold">${totalGeneral.toLocaleString()}</div>
           <p className="text-xs text-muted-foreground">{cantidadVentas} ventas totales</p>
         </CardContent>
       </Card>
 
+      {/* Ganancia Total (reemplaza 'Promedio por Venta') */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Total Ganancias</CardTitle>
-          <CreditCard className="h-4 w-4 text-muted-foreground" />
+          <CardTitle className="text-sm font-medium">Ganancia Total</CardTitle>
+          <PiggyBank className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">${formatMoney(totalGanancias)}</div>
-          <p className="text-xs text-muted-foreground">Suma de ganancias por producto</p>
+          <div className="text-2xl font-bold">
+            ${gananciaTotal.toLocaleString()}
+          </div>
+          <p className="text-xs text-muted-foreground">Suma total de ganancias del período</p>
         </CardContent>
       </Card>
 
+      {/* Métodos de pago más usado */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">Método Principal</CardTitle>
@@ -169,7 +175,9 @@ const StatsCards = ({
           {metodoPrincipal ? (
             <>
               <div className="text-2xl font-bold capitalize">{metodoPrincipal.name}</div>
-              <p className="text-xs text-muted-foreground">${formatMoney(metodoPrincipal.value)} total</p>
+              <p className="text-xs text-muted-foreground">
+                ${metodoPrincipal.value.toLocaleString()} total
+              </p>
             </>
           ) : (
             <>
@@ -184,7 +192,7 @@ const StatsCards = ({
 };
 
 // ============================================================================
-// DateRangeSelector
+// COMPONENTE: DateRangeSelector
 // ============================================================================
 
 interface DateRangeSelectorProps {
@@ -202,7 +210,7 @@ const DateRangeSelector = ({
   fechaFin,
   onRangoChange,
   onFechaInicioChange,
-  onFechaFinChange
+  onFechaFinChange,
 }: DateRangeSelectorProps) => {
   return (
     <Card>
@@ -228,8 +236,18 @@ const DateRangeSelector = ({
 
             {rangoSeleccionado === 'personalizado' && (
               <div className="flex gap-2">
-                <Input type="date" value={fechaInicio} onChange={(e) => onFechaInicioChange(e.target.value)} className="w-full sm:w-auto" />
-                <Input type="date" value={fechaFin} onChange={(e) => onFechaFinChange(e.target.value)} className="w-full sm:w-auto" />
+                <Input
+                  type="date"
+                  value={fechaInicio}
+                  onChange={(e) => onFechaInicioChange(e.target.value)}
+                  className="w-full sm:w-auto"
+                />
+                <Input
+                  type="date"
+                  value={fechaFin}
+                  onChange={(e) => onFechaFinChange(e.target.value)}
+                  className="w-full sm:w-auto"
+                />
               </div>
             )}
           </div>
@@ -240,7 +258,7 @@ const DateRangeSelector = ({
 };
 
 // ============================================================================
-// Charts & Tables
+// COMPONENTE: PaymentMethodsChart (lista simple)
 // ============================================================================
 
 const PaymentMethodsChart = ({ data, totalGeneral }: { data: PaymentData[]; totalGeneral: number }) => {
@@ -248,44 +266,49 @@ const PaymentMethodsChart = ({ data, totalGeneral }: { data: PaymentData[]; tota
     <Card>
       <CardHeader>
         <CardTitle>Distribución por Método de Pago</CardTitle>
-        <p className="text-sm text-muted-foreground">Porcentaje de ventas según método de pago utilizado en el período seleccionado</p>
+        <p className="text-sm text-muted-foreground">
+          Porcentaje de ventas según método de pago utilizado en el período seleccionado
+        </p>
       </CardHeader>
       <CardContent>
         {data.length === 0 ? (
-          <div className="h-80 flex items-center justify-center text-muted-foreground">No hay datos disponibles</div>
+          <div className="h-80 flex items-center justify-center text-muted-foreground">
+            No hay datos disponibles para el rango seleccionado
+          </div>
         ) : (
-          <div className="grid lg:grid-cols-2 gap-6">
-            <ResponsiveContainer width="100%" height={400}>
-              <RechartsPie>
-                <Pie data={data} cx="50%" cy="50%" labelLine={false} label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`} outerRadius={120} dataKey="value">
-                  {data.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
-                </Pie>
-                <Tooltip formatter={(value: number) => [`$${formatMoney(value)}`, 'Total']} />
-                <Legend />
-              </RechartsPie>
-            </ResponsiveContainer>
-
-            <div className="space-y-4">
-              <h4 className="font-semibold">Detalles por Método</h4>
-              {data.map((item) => (
-                <div key={item.name} className="flex justify-between items-center p-3 border rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div style={{ backgroundColor: item.color }} className="w-4 h-4 rounded" />
-                    <span className="font-medium capitalize">{item.name}</span>
+          <div className="grid gap-4">
+            {data.map((item) => (
+              <div
+                key={item.name}
+                className="flex justify-between items-center p-4 border rounded-xl shadow-sm hover:shadow-md transition-all"
+              >
+                <div className="flex items-center gap-4">
+                  <div
+                    style={{ background: item.color }}
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold"
+                  >
+                    {item.name.charAt(0).toUpperCase()}
                   </div>
-                  <div className="text-right">
-                    <div className="font-bold">${formatMoney(item.value)}</div>
-                    <div className="text-sm text-muted-foreground">{totalGeneral > 0 ? ((item.value / totalGeneral) * 100).toFixed(1) : '0.0'}%</div>
+                  <span className="font-medium capitalize">{item.name}</span>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold text-lg">${item.value.toLocaleString()}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {totalGeneral > 0 ? `${((item.value / totalGeneral) * 100).toFixed(1)}%` : '0%'}
                   </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         )}
       </CardContent>
     </Card>
   );
 };
+
+// ============================================================================
+// COMPONENTE: DailyTrendChart
+// ============================================================================
 
 const DailyTrendChart = ({ data }: { data: DailyData[] }) => {
   return (
@@ -302,10 +325,10 @@ const DailyTrendChart = ({ data }: { data: DailyData[] }) => {
             <RechartsLine data={data}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="fecha" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={80} />
-              <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${formatMoney(v)}`} />
-              <Tooltip formatter={(value: number) => [`$${formatMoney(value)}`, 'Total']} />
+              <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+              <Tooltip formatter={(value: number) => [`$${value.toLocaleString()}`, 'Total']} labelFormatter={(label) => `Fecha: ${label}`} />
               <Legend />
-              <Line type="monotone" dataKey="total" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              <Line type="monotone" dataKey="total" stroke="#3b82f6" strokeWidth={2} name="Ventas del Día" dot={{ r: 4 }} activeDot={{ r: 6 }} />
             </RechartsLine>
           </ResponsiveContainer>
         )}
@@ -313,6 +336,10 @@ const DailyTrendChart = ({ data }: { data: DailyData[] }) => {
     </Card>
   );
 };
+
+// ============================================================================
+// COMPONENTE: TopProductsChart
+// ============================================================================
 
 const TopProductsChart = ({ data }: { data: ProductData[] }) => {
   return (
@@ -330,10 +357,10 @@ const TopProductsChart = ({ data }: { data: ProductData[] }) => {
               <BarChart data={data} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis type="number" tick={{ fontSize: 12 }} />
-                <YAxis type="category" dataKey="nombre" tick={{ fontSize: 11 }} width={140} />
-                <Tooltip formatter={(value: number, name: string) => (name === 'cantidad' ? [value, 'Unidades'] : [`$${formatMoney(value)}`, 'Total'])} />
+                <YAxis type="category" dataKey="nombre" tick={{ fontSize: 11 }} width={180} />
+                <Tooltip formatter={(value: number, name: string) => (name === 'cantidad' ? [value, 'Unidades'] : [`$${value.toLocaleString()}`, 'Total'])} />
                 <Legend />
-                <Bar dataKey="cantidad" fill="#8b5cf6" radius={[0, 4, 4, 0]} name="Cantidad Vendida" />
+                <Bar dataKey="cantidad" fill="#8b5cf6" name="Cantidad Vendida" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
 
@@ -350,8 +377,8 @@ const TopProductsChart = ({ data }: { data: ProductData[] }) => {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-bold text-sm">${formatMoney(item.total)}</div>
-                      <div className="text-xs text-muted-foreground">${formatMoney(item.total / Math.max(1, item.cantidad))} c/u</div>
+                      <div className="font-bold text-sm">${item.total.toLocaleString()}</div>
+                      <div className="text-xs text-muted-foreground">${(item.total / item.cantidad).toLocaleString(undefined, { maximumFractionDigits: 0 })} c/u</div>
                     </div>
                   </div>
                 ))}
@@ -363,6 +390,10 @@ const TopProductsChart = ({ data }: { data: ProductData[] }) => {
     </Card>
   );
 };
+
+// ============================================================================
+// COMPONENTE: GananciasTable
+// ============================================================================
 
 const GananciasTable = ({ fechaInicio, fechaFin, data, loading }: { fechaInicio: string; fechaFin: string; data: GananciaRow[]; loading: boolean }) => {
   return (
@@ -399,10 +430,10 @@ const GananciasTable = ({ fechaInicio, fechaFin, data, loading }: { fechaInicio:
                   data.map((row) => (
                     <tr key={row.nombre} className="border-b hover:bg-muted/50">
                       <td className="px-4 py-3 text-sm">{row.nombre}</td>
-                      <td className="px-4 py-3 text-sm">{row.costo != null ? `$${formatMoney(row.costo)}` : '—'}</td>
-                      <td className="px-4 py-3 text-sm">{row.precio != null ? `$${formatMoney(row.precio)}` : '—'}</td>
+                      <td className="px-4 py-3 text-sm">{row.costo != null ? `$${row.costo.toLocaleString()}` : '—'}</td>
+                      <td className="px-4 py-3 text-sm">{row.precio != null ? `$${row.precio.toLocaleString()}` : '—'}</td>
                       <td className="px-4 py-3 text-right text-sm">{row.cantidad}</td>
-                      <td className="px-4 py-3 text-right text-sm font-medium">{row.ganancia != null ? `$${formatMoney(row.ganancia)}` : '—'}</td>
+                      <td className="px-4 py-3 text-right text-sm font-medium">{row.ganancia != null ? `$${row.ganancia.toLocaleString()}` : '—'}</td>
                     </tr>
                   ))
                 )}
@@ -414,13 +445,28 @@ const GananciasTable = ({ fechaInicio, fechaFin, data, loading }: { fechaInicio:
     </Card>
   );
 };
-
-const SalesTable = ({ ventas, loading, fechaInicio, fechaFin }: { ventas: Sale[]; loading: boolean; fechaInicio: string; fechaFin: string }) => {
+// ============================================================================
+// COMPONENTE: SalesTable (ajustado para mostrar cantidad junto al nombre)
+// ============================================================================
+const SalesTable = ({
+  ventas,
+  loading,
+  fechaInicio,
+  fechaFin,
+}: {
+  ventas: Sale[];
+  loading: boolean;
+  fechaInicio: string;
+  fechaFin: string;
+}) => {
   return (
     <Card>
       <CardHeader>
         <CardTitle>Detalle de Ventas</CardTitle>
-        <p className="text-sm text-muted-foreground">{format(new Date(fechaInicio), "dd 'de' MMMM", { locale: es })} - {format(new Date(fechaFin), "dd 'de' MMMM yyyy", { locale: es })}</p>
+        <p className="text-sm text-muted-foreground">
+          {format(new Date(fechaInicio), "dd 'de' MMMM", { locale: es })} -{" "}
+          {format(new Date(fechaFin), "dd 'de' MMMM yyyy", { locale: es })}
+        </p>
       </CardHeader>
       <CardContent>
         <div className="rounded-md border">
@@ -432,26 +478,65 @@ const SalesTable = ({ ventas, loading, fechaInicio, fechaFin }: { ventas: Sale[]
                   <th className="px-4 py-3 text-left text-sm font-medium">Vendedor</th>
                   <th className="px-4 py-3 text-left text-sm font-medium">Método de pago</th>
                   <th className="px-4 py-3 text-left text-sm font-medium">Productos vendidos</th>
-                  <th className="px-4 py-3 text-right text-sm font-medium">Total</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium">Valor</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium">Total Venta</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Cargando ventas...</td>
+                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                      Cargando ventas...
+                    </td>
                   </tr>
                 ) : ventas.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No hay ventas en este rango de fechas</td>
+                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                      No hay ventas en este rango de fechas
+                    </td>
                   </tr>
                 ) : (
                   ventas.map((venta) => (
                     <tr key={venta.id} className="border-b hover:bg-muted/50">
-                      <td className="px-4 py-3 text-sm">{format(new Date(venta.created_at), 'dd/MM/yyyy HH:mm', { locale: es })}</td>
+                      <td className="px-4 py-3 text-sm">
+                        {format(new Date(venta.created_at), 'dd/MM/yyyy HH:mm', { locale: es })}
+                      </td>
                       <td className="px-4 py-3 text-sm">{venta.user?.full_name || '—'}</td>
                       <td className="px-4 py-3 text-sm capitalize">{venta.payment_method}</td>
-                      <td className="px-4 py-3 text-sm">{venta.items && venta.items.length > 0 ? venta.items.map(i => `${i.product_name} x${i.quantity}`).join(', ') : '—'}</td>
-                      <td className="px-4 py-3 text-right text-sm font-medium">${formatMoney(venta.total)}</td>
+
+                      {/* Productos vendidos */}
+                      <td className="px-4 py-3 text-sm">
+                        {venta.items && venta.items.length > 0 ? (
+                          <ul className="space-y-1">
+                            {venta.items.map((item, idx) => (
+                              <li key={idx} className="flex items-center justify-start gap-1">
+                                <span className="truncate">{item.product_name}</span>
+                                <span className="text-muted-foreground text-xs">x{item.quantity}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+
+                      {/* Valor por producto */}
+                      <td className="px-4 py-3 text-right text-sm">
+                        {venta.items && venta.items.length > 0 ? (
+                          <ul className="space-y-1">
+                            {venta.items.map((item, idx) => (
+                              <li key={idx}>${item.subtotal.toLocaleString()}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+
+                      {/* Total venta */}
+                      <td className="px-4 py-3 text-right text-sm font-medium">
+                        ${venta.total.toLocaleString()}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -465,10 +550,11 @@ const SalesTable = ({ ventas, loading, fechaInicio, fechaFin }: { ventas: Sale[]
 };
 
 // ============================================================================
-// DASHBOARD
+// COMPONENTE PRINCIPAL: Dashboard
 // ============================================================================
 
 const Dashboard = () => {
+  // Estados
   const [fechaInicio, setFechaInicio] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [fechaFin, setFechaFin] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
   const [rangoSeleccionado, setRangoSeleccionado] = useState('mes');
@@ -476,185 +562,243 @@ const Dashboard = () => {
   const [ventasHoy, setVentasHoy] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingHoy, setLoadingHoy] = useState(false);
-  const [productosInv, setProductosInv] = useState<any[]>([]);
+  const [productosInv, setProductosInv] = useState<Product[]>([]);
   const [loadingProductos, setLoadingProductos] = useState(false);
 
+  // Cargar ventas del rango seleccionado
   useEffect(() => {
     const fetchVentas = async () => {
       try {
         setLoading(true);
-        const data = await salesAPI.getAll({ start_date: `${fechaInicio}T00:00:00`, end_date: `${fechaFin}T23:59:59` });
-        setVentas(data || []);
-      } catch (err: any) {
-        console.error(err);
-        toast.error(err.message || 'Error cargando las ventas');
+        const data = await salesAPI.getAll({
+          start_date: `${fechaInicio}T00:00:00`,
+          end_date: `${fechaFin}T23:59:59`,
+        });
+        setVentas((data as Sale[]) || []);
+      } catch (error) {
+        console.error(error);
+        const msg = error instanceof Error ? error.message : String(error);
+        toast.error(msg || 'Error cargando las ventas');
       } finally {
         setLoading(false);
       }
     };
+
     fetchVentas();
   }, [fechaInicio, fechaFin]);
 
+  // Cargar ventas de hoy
   useEffect(() => {
     const fetchVentasHoy = async () => {
       try {
         setLoadingHoy(true);
         const data = await salesAPI.getAll({ today: true });
-        setVentasHoy(data || []);
-      } catch (err: any) {
-        console.error(err);
-        toast.error(err.message || 'Error cargando las ventas de hoy');
+        setVentasHoy((data as Sale[]) || []);
+      } catch (error) {
+        console.error(error);
+        const msg = error instanceof Error ? error.message : String(error);
+        toast.error(msg || 'Error cargando las ventas de hoy');
       } finally {
         setLoadingHoy(false);
       }
     };
+
     fetchVentasHoy();
   }, []);
 
+  // Cargar productos del inventario (para calcular costos y precios)
   useEffect(() => {
     const fetchProductos = async () => {
       try {
         setLoadingProductos(true);
         const data = await productsAPI.getAll({ limit: 1000 });
-        setProductosInv(data || []);
-      } catch (err: any) {
-        console.error(err);
-        toast.error(err.message || 'Error cargando los productos');
+        setProductosInv((data as Product[]) || []);
+      } catch (error) {
+        console.error(error);
+        const msg = error instanceof Error ? error.message : String(error);
+        toast.error(msg || 'Error cargando los productos');
       } finally {
         setLoadingProductos(false);
       }
     };
+
     fetchProductos();
   }, []);
 
+  // Manejar cambio de rango
   const handleRangoChange = (rango: string) => {
     setRangoSeleccionado(rango);
     const hoy = new Date();
+
     switch (rango) {
       case 'hoy':
         setFechaInicio(format(hoy, 'yyyy-MM-dd'));
         setFechaFin(format(hoy, 'yyyy-MM-dd'));
         break;
-      case 'semana':
-        setFechaInicio(format(startOfDay(addDays(hoy, -7)), 'yyyy-MM-dd'));
+      case 'semana': {
+        const inicioSemana = startOfDay(addDays(hoy, -7));
+        setFechaInicio(format(inicioSemana, 'yyyy-MM-dd'));
         setFechaFin(format(hoy, 'yyyy-MM-dd'));
         break;
+      }
       case 'mes':
         setFechaInicio(format(startOfMonth(hoy), 'yyyy-MM-dd'));
         setFechaFin(format(endOfMonth(hoy), 'yyyy-MM-dd'));
         break;
-      case 'mes_anterior':
-        const ma = subMonths(hoy, 1);
-        setFechaInicio(format(startOfMonth(ma), 'yyyy-MM-dd'));
-        setFechaFin(format(endOfMonth(ma), 'yyyy-MM-dd'));
+      case 'mes_anterior': {
+        const mesAnterior = subMonths(hoy, 1);
+        setFechaInicio(format(startOfMonth(mesAnterior), 'yyyy-MM-dd'));
+        setFechaFin(format(endOfMonth(mesAnterior), 'yyyy-MM-dd'));
         break;
+      }
       default:
         break;
     }
   };
 
+  // Filtrar ventas por rango
   const ventasFiltradas = useMemo(() => {
-    if (ventas.length === 0) return [];
+    if (!ventas || ventas.length === 0) return [];
     if (rangoSeleccionado === 'hoy') return ventas;
+
     const inicio = startOfDay(new Date(fechaInicio + 'T00:00:00'));
     const fin = endOfDay(new Date(fechaFin + 'T23:59:59'));
-    return ventas.filter(v => {
-      const d = new Date(v.created_at);
-      return isWithinInterval(d, { start: inicio, end: fin });
+
+    return ventas.filter((venta) => {
+      const fechaVenta = new Date(venta.created_at);
+      return isWithinInterval(fechaVenta, { start: inicio, end: fin });
     });
   }, [ventas, fechaInicio, fechaFin, rangoSeleccionado]);
 
-  const totalGeneral = ventasFiltradas.reduce((s, v) => s + (v.total || 0), 0);
-  const totalHoy = ventasHoy.reduce((s, v) => s + (v.total || 0), 0);
+  // Estadísticas generales
+  const totalGeneral = ventasFiltradas.reduce((sum, venta) => sum + (venta.total || 0), 0);
+  const totalHoy = ventasHoy.reduce((sum, venta) => sum + (venta.total || 0), 0);
   const cantidadVentas = ventasFiltradas.length;
+  const promedioVenta = cantidadVentas > 0 ? totalGeneral / cantidadVentas : 0;
 
-  const pagosPorMetodo = useMemo(() => {
-    const m: Record<string, number> = { efectivo: 0, nequi: 0, daviplata: 0, card: 0, transfer: 0 };
-    ventasFiltradas.forEach(v => {
-      const metodo = (v.payment_method || '').toLowerCase();
-      if (m[metodo] !== undefined) m[metodo] += v.total || 0;
-      else m[metodo] = (m[metodo] || 0) + (v.total || 0);
-    });
-    return m;
-  }, [ventasFiltradas]);
-
-  const dataPie: PaymentData[] = useMemo(() => {
-    return Object.entries(pagosPorMetodo)
-      .filter(([, val]) => val > 0)
-      .map(([k, val]) => ({ name: k, value: val, color: (COLORS as any)[k] || '#9ca3af' }));
-  }, [pagosPorMetodo]);
-
-  const dataLineas = useMemo(() => {
-    if (ventasFiltradas.length === 0) return [];
-    const inicio = rangoSeleccionado === 'hoy' ? startOfDay(new Date()) : new Date(fechaInicio + 'T00:00:00');
-    const fin = rangoSeleccionado === 'hoy' ? endOfDay(new Date()) : new Date(fechaFin + 'T23:59:59');
-    const dias = eachDayOfInterval({ start: inicio, end: fin });
-    const diasData = dias.map(d => ({ fecha: format(d, 'dd/MM', { locale: es }), fechaCompleta: format(d, 'yyyy-MM-dd'), total: 0, cantidad: 0, diaSemana: format(d, 'EEEE', { locale: es }) }));
-    ventasFiltradas.forEach(v => {
-      const fecha = format(new Date(v.created_at), 'yyyy-MM-dd');
-      const found = diasData.find(d => d.fechaCompleta === fecha);
-      if (found) { found.total += v.total || 0; found.cantidad += 1; }
-    });
-    return diasData;
-  }, [ventasFiltradas, fechaInicio, fechaFin, rangoSeleccionado]);
-
-  const topProductos = useMemo(() => {
-    const map = new Map<string, { cantidad: number; total: number }>();
-    ventasFiltradas.forEach(v => {
-      (v.items || []).forEach(item => {
-        const name = item.product_name || 'Producto sin nombre';
-        const ex = map.get(name) || { cantidad: 0, total: 0 };
-        ex.cantidad += item.quantity;
-        ex.total += item.subtotal;
-        map.set(name, ex);
+  // Mapa rápido del inventario: name (lowercase) -> { price, cost }
+  const inventarioMap = useMemo(() => {
+    const map = new Map<string, { price?: number | null; cost?: number | null }>();
+    productosInv.forEach((p) => {
+      const name = (p.name || p.nombre || '').toString().toLowerCase();
+      map.set(name, {
+        price: (p.price ?? p.precio) as number | null,
+        cost: (p.cost ?? p.costo) as number | null,
       });
     });
-    return Array.from(map.entries()).map(([nombre, d]) => ({ nombre, cantidad: d.cantidad, total: d.total })).sort((a, b) => b.cantidad - a.cantidad).slice(0, 10);
-  }, [ventasFiltradas]);
-
-  const inventarioMap = useMemo(() => {
-    const m = new Map<string, { price?: number | null; cost?: number | null }>();
-    productosInv.forEach(p => {
-      const key = (p.name || p.nombre || '').toString().toLowerCase();
-      m.set(key, { price: p.price ?? p.precio ?? null, cost: p.cost ?? p.costo ?? null });
-    });
-    return m;
+    return map;
   }, [productosInv]);
 
-  const gananciasData = useMemo(() => {
+  // Datos para la tabla de ganancias
+  const gananciasData: GananciaRow[] = useMemo(() => {
     const agg = new Map<string, { nombreOriginal?: string; cantidad: number; totalSales: number; unitPrice?: number | null }>();
-    ventasFiltradas.forEach(v => {
-      (v.items || []).forEach(item => {
-        const nombre = item.product_name || 'Producto sin nombre';
-        const key = nombre.toLowerCase();
-        const ex = agg.get(key) || { nombreOriginal: nombre, cantidad: 0, totalSales: 0, unitPrice: null };
-        ex.cantidad += item.quantity;
-        ex.totalSales += item.subtotal;
-        if (ex.unitPrice == null && item.quantity) ex.unitPrice = item.subtotal / item.quantity;
-        agg.set(key, ex);
-      });
+
+    ventasFiltradas.forEach((venta) => {
+      if (venta.items && Array.isArray(venta.items)) {
+        venta.items.forEach((item) => {
+          const nombre = item.product_name || 'Producto sin nombre';
+          const key = nombre.toLowerCase();
+          const existing = agg.get(key) || { nombreOriginal: nombre, cantidad: 0, totalSales: 0, unitPrice: null };
+
+          existing.cantidad += item.quantity;
+          existing.totalSales += item.subtotal;
+          if (existing.unitPrice == null && item.quantity) {
+            existing.unitPrice = item.subtotal / item.quantity;
+          }
+
+          agg.set(key, existing);
+        });
+      }
     });
 
     const rows: GananciaRow[] = Array.from(agg.entries()).map(([key, v]) => {
       const inv = inventarioMap.get(key);
       const precio = inv?.price ?? v.unitPrice ?? null;
       const costo = inv?.cost ?? null;
-      const gananciaUnit = precio != null && costo != null ? precio - costo : null;
-      const gananciaTotal = gananciaUnit != null ? Number((gananciaUnit * v.cantidad).toFixed(2)) : null;
-      return { nombre: v.nombreOriginal || key, costo, precio, cantidad: v.cantidad, ganancia: gananciaTotal };
+      const gananciaUnit = precio != null && costo != null ? (precio - costo) : null;
+      const gananciaTotal = gananciaUnit != null ? gananciaUnit * v.cantidad : null;
+
+      return {
+        nombre: v.nombreOriginal || key,
+        costo,
+        precio,
+        cantidad: v.cantidad,
+        ganancia: gananciaTotal,
+      };
     });
 
     rows.sort((a, b) => (b.ganancia ?? -Infinity) - (a.ganancia ?? -Infinity));
     return rows;
   }, [ventasFiltradas, inventarioMap]);
 
-  const totalGanancias = useMemo(() => gananciasData.reduce((s, r) => s + (r.ganancia ?? 0), 0), [gananciasData]);
+  // Ganancia total
+  const gananciaTotal = useMemo(() => gananciasData.reduce((sum, r) => sum + (r.ganancia ?? 0), 0), [gananciasData]);
 
-  const metodoPrincipal = useMemo(() => {
-    if (dataPie.length === 0) return null;
-    const sorted = [...dataPie].sort((a, b) => b.value - a.value);
-    return { name: sorted[0].name, value: sorted[0].value, color: sorted[0].color };
-  }, [dataPie]);
+  // Métodos de pago
+  const pagosPorMetodo = useMemo(() => {
+    const metodos: Record<string, number> = { efectivo: 0, nequi: 0, daviplata: 0, card: 0, transfer: 0 };
+    ventasFiltradas.forEach((venta) => {
+      const metodo = (venta.payment_method || 'otro').toLowerCase();
+      metodos[metodo] = (metodos[metodo] || 0) + (venta.total || 0);
+    });
+    return metodos;
+  }, [ventasFiltradas]);
+
+  const dataPie: PaymentData[] = useMemo(() => {
+    return Object.entries(pagosPorMetodo)
+      .filter(([_, v]) => v > 0)
+      .map(([met, val]) => ({
+        name: met,
+        value: val,
+        color: COLORS[met] ?? '#3b82f6',
+      }));
+  }, [pagosPorMetodo]);
+
+  // Datos para gráficas de líneas (ventas por día)
+  const dataLineas: DailyData[] = useMemo(() => {
+    if (ventasFiltradas.length === 0) {
+      return [];
+    }
+
+    const inicio = rangoSeleccionado === 'hoy' ? startOfDay(new Date()) : new Date(fechaInicio + 'T00:00:00');
+    const fin = rangoSeleccionado === 'hoy' ? endOfDay(new Date()) : new Date(fechaFin + 'T23:59:59');
+
+    const todosLosDias = eachDayOfInterval({ start: inicio, end: fin });
+
+    const ventasPorDia = todosLosDias.map((dia) => {
+      const fechaStr = format(dia, 'dd/MM', { locale: es });
+      return { fecha: fechaStr, fechaCompleta: format(dia, 'yyyy-MM-dd'), total: 0, cantidad: 0, diaSemana: format(dia, 'EEEE', { locale: es }) };
+    });
+
+    ventasFiltradas.forEach((venta) => {
+      const fechaVenta = new Date(venta.created_at);
+      const fechaCompleta = format(fechaVenta, 'yyyy-MM-dd');
+      const dia = ventasPorDia.find((d) => d.fechaCompleta === fechaCompleta);
+      if (dia) {
+        dia.total += venta.total;
+        dia.cantidad += 1;
+      }
+    });
+
+    return ventasPorDia;
+  }, [ventasFiltradas, fechaInicio, fechaFin, rangoSeleccionado]);
+
+  // Top productos
+  const topProductos: ProductData[] = useMemo(() => {
+    const map = new Map<string, { cantidad: number; total: number }>();
+    ventasFiltradas.forEach((venta) => {
+      venta.items?.forEach((it) => {
+        const name = it.product_name || 'Producto sin nombre';
+        const curr = map.get(name) || { cantidad: 0, total: 0 };
+        map.set(name, { cantidad: curr.cantidad + it.quantity, total: curr.total + it.subtotal });
+      });
+    });
+
+    return Array.from(map.entries())
+      .map(([nombre, d]) => ({ nombre, cantidad: d.cantidad, total: d.total }))
+      .sort((a, b) => b.cantidad - a.cantidad)
+      .slice(0, 10);
+  }, [ventasFiltradas]);
 
   return (
     <Layout>
@@ -664,10 +808,29 @@ const Dashboard = () => {
           <p className="text-muted-foreground">Resumen de ventas y estadísticas</p>
         </div>
 
-        <DateRangeSelector rangoSeleccionado={rangoSeleccionado} fechaInicio={fechaInicio} fechaFin={fechaFin} onRangoChange={handleRangoChange} onFechaInicioChange={setFechaInicio} onFechaFinChange={setFechaFin} />
+        {/* Selector de rango */}
+        <DateRangeSelector
+          rangoSeleccionado={rangoSeleccionado}
+          fechaInicio={fechaInicio}
+          fechaFin={fechaFin}
+          onRangoChange={handleRangoChange}
+          onFechaInicioChange={setFechaInicio}
+          onFechaFinChange={setFechaFin}
+        />
 
-        <StatsCards totalHoy={totalHoy} ventasHoyLength={ventasHoy.length} loadingHoy={loadingHoy} totalGeneral={totalGeneral} cantidadVentas={cantidadVentas} totalGanancias={totalGanancias} metodoPrincipal={metodoPrincipal} />
+        {/* Tarjetas de estadísticas */}
+        <StatsCards
+          totalHoy={totalHoy}
+          ventasHoyLength={ventasHoy.length}
+          loadingHoy={loadingHoy}
+          totalGeneral={totalGeneral}
+          cantidadVentas={cantidadVentas}
+          promedioVenta={promedioVenta}
+          metodoPrincipal={dataPie[0] || null}
+          gananciaTotal={gananciaTotal}
+        />
 
+        {/* Tabs con gráficos y tablas */}
         <Tabs defaultValue="tabla" className="w-full">
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="tabla">🧾 Detalle de Ventas</TabsTrigger>
