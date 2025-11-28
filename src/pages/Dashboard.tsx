@@ -42,8 +42,8 @@ import {
 
 const COLORS: Record<string, string> = {
   efectivo: '#10b981',
-  nequi: '#8b5cf6',
-  daviplata: '#f59e0b',
+  nequi: '#4c00ffff',
+  daviplata: '#ff0000ff',
 };
 
 interface Sale {
@@ -79,6 +79,7 @@ interface Product {
   id?: number;
   name?: string;
   nombre?: string;
+  description?: string;
   price?: number;
   precio?: number;
   cost?: number;
@@ -430,10 +431,10 @@ const GananciasTable = ({ fechaInicio, fechaFin, data, loading }: { fechaInicio:
                   data.map((row) => (
                     <tr key={row.nombre} className="border-b hover:bg-muted/50">
                       <td className="px-4 py-3 text-sm">{row.nombre}</td>
-                      <td className="px-4 py-3 text-sm">{row.costo != null ? `$${row.costo.toLocaleString()}` : '—'}</td>
-                      <td className="px-4 py-3 text-sm">{row.precio != null ? `$${row.precio.toLocaleString()}` : '—'}</td>
+                      <td className="px-4 py-3 text-sm">{row.costo != null ? `$${row.costo.toLocaleString('es-CO')}` : '—'}</td>
+                      <td className="px-4 py-3 text-sm">{row.precio != null ? `$${row.precio.toLocaleString('es-CO')}` : '—'}</td>
                       <td className="px-4 py-3 text-right text-sm">{row.cantidad}</td>
-                      <td className="px-4 py-3 text-right text-sm font-medium">{row.ganancia != null ? `$${row.ganancia.toLocaleString()}` : '—'}</td>
+                      <td className="px-4 py-3 text-right text-sm font-medium">{row.ganancia != null ? `$${row.ganancia.toLocaleString('es-CO')}` : '—'}</td>
                     </tr>
                   ))
                 )}
@@ -478,7 +479,6 @@ const SalesTable = ({
                   <th className="px-4 py-3 text-left text-sm font-medium">Vendedor</th>
                   <th className="px-4 py-3 text-left text-sm font-medium">Método de pago</th>
                   <th className="px-4 py-3 text-left text-sm font-medium">Productos vendidos</th>
-                  <th className="px-4 py-3 text-right text-sm font-medium">Valor</th>
                   <th className="px-4 py-3 text-right text-sm font-medium">Total Venta</th>
                 </tr>
               </thead>
@@ -513,19 +513,6 @@ const SalesTable = ({
                                 <span className="truncate">{item.product_name}</span>
                                 <span className="text-muted-foreground text-xs">x{item.quantity}</span>
                               </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-
-                      {/* Valor por producto */}
-                      <td className="px-4 py-3 text-right text-sm">
-                        {venta.items && venta.items.length > 0 ? (
-                          <ul className="space-y-1">
-                            {venta.items.map((item, idx) => (
-                              <li key={idx}>${item.subtotal.toLocaleString()}</li>
                             ))}
                           </ul>
                         ) : (
@@ -705,7 +692,6 @@ const Dashboard = () => {
           if (existing.unitPrice == null && item.quantity) {
             existing.unitPrice = item.subtotal / item.quantity;
           }
-
           agg.set(key, existing);
         });
       }

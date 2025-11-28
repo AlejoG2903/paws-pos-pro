@@ -521,8 +521,6 @@ const Inventario = () => {
                   <SelectContent>
                     <SelectItem value="unidad">Unidad</SelectItem>
                     <SelectItem value="kg">Kg</SelectItem>
-                    <SelectItem value="lb">Lb</SelectItem>
-                    <SelectItem value="gr">Gr</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
