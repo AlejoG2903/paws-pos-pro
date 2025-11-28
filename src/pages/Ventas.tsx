@@ -163,6 +163,14 @@ export default function Ventas() {
    ****************************************************/
   const finalizarVenta = async () => {
     if (carrito.length === 0) return toast.error("Carrito vacío");
+    
+    // 🔹 VALIDAR QUE PRODUCTOS POR KG TENGAN MONTO INGRESADO
+    for (const item of carrito) {
+      if (item.producto.unidad_medida === "kg" && (!item.montoCop || item.montoCop <= 0)) {
+        return toast.error(`Ingresa un monto válido para ${item.producto.name}`);
+      }
+    }
+    
     setRegistrando(true);
 
     try {
@@ -170,14 +178,15 @@ export default function Ventas() {
         payment_method: metodoPago,
         items: carrito.map(item => {
           if (item.producto.unidad_medida === "kg") {
+            // Para productos por kg: enviar el monto exacto, quantity = 1 (venta por monto)
             return {
               product_id: item.producto.id,
-              monto: item.montoCop,
-              kilos: item.kilosVendidos,
-              price: item.producto.price
+              quantity: 1,                      // 1 porque es venta por monto total
+              price: item.montoCop || 0         // Precio = monto total vendido
             };
           }
 
+          // Para productos normales: quantity es la cantidad, price es el precio unitario
           return {
             product_id: item.producto.id,
             quantity: item.cantidad,
@@ -295,6 +304,7 @@ export default function Ventas() {
                   <SelectContent>
                     <SelectItem value="todos">Todas</SelectItem>
                     <SelectItem value="kg">Kg</SelectItem>
+                    <SelectItem value="unidad">Unidad</SelectItem>
                   </SelectContent>
                 </Select>
                 {filtroUnidad !== 'todos' && (
@@ -402,10 +412,11 @@ export default function Ventas() {
                         value={item.montoCop ? formatearNumero(item.montoCop) : ""}
                         onChange={e => {
                           const monto = limpiarNumero(e.target.value);
+                          
                           const kilos = monto / item.producto.price;
 
                           // 🔹 VALIDAR QUE NO EXCEDA STOCK DISPONIBLE
-                          if (kilos > item.producto.stock) {
+                          if (monto > 0 && kilos > item.producto.stock) {
                             toast.error(`Stock máximo disponible: ${item.producto.stock} kg (${kgToLb(item.producto.stock).toFixed(2)} lb) ($${(item.producto.stock * item.producto.price).toLocaleString('es-CO')})`);
                             return;
                           }

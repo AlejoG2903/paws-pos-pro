@@ -414,7 +414,7 @@ const GananciasTable = ({ fechaInicio, fechaFin, data, loading }: { fechaInicio:
                   <th className="px-4 py-3 text-left text-sm font-medium">Nombre Producto</th>
                   <th className="px-4 py-3 text-left text-sm font-medium">Costo</th>
                   <th className="px-4 py-3 text-left text-sm font-medium">Precio</th>
-                  <th className="px-4 py-3 text-right text-sm font-medium">Total Vendidos</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium">Total Vendido (COP)</th>
                   <th className="px-4 py-3 text-right text-sm font-medium">Ganancia</th>
                 </tr>
               </thead>
@@ -433,7 +433,7 @@ const GananciasTable = ({ fechaInicio, fechaFin, data, loading }: { fechaInicio:
                       <td className="px-4 py-3 text-sm">{row.nombre}</td>
                       <td className="px-4 py-3 text-sm">{row.costo != null ? `$${row.costo.toLocaleString('es-CO')}` : '—'}</td>
                       <td className="px-4 py-3 text-sm">{row.precio != null ? `$${row.precio.toLocaleString('es-CO')}` : '—'}</td>
-                      <td className="px-4 py-3 text-right text-sm">{row.cantidad}</td>
+                      <td className="px-4 py-3 text-right text-sm font-medium">${(row.cantidad * (row.precio || 0)).toLocaleString('es-CO')}</td>
                       <td className="px-4 py-3 text-right text-sm font-medium">{row.ganancia != null ? `$${row.ganancia.toLocaleString('es-CO')}` : '—'}</td>
                     </tr>
                   ))
@@ -446,6 +446,7 @@ const GananciasTable = ({ fechaInicio, fechaFin, data, loading }: { fechaInicio:
     </Card>
   );
 };
+
 // ============================================================================
 // COMPONENTE: SalesTable (ajustado para mostrar cantidad junto al nombre)
 // ============================================================================
@@ -678,17 +679,35 @@ const Dashboard = () => {
 
   // Datos para la tabla de ganancias
   const gananciasData: GananciaRow[] = useMemo(() => {
-    const agg = new Map<string, { nombreOriginal?: string; cantidad: number; totalSales: number; unitPrice?: number | null }>();
+    const agg = new Map<string, { 
+      nombreOriginal?: string; 
+      cantidad: number; 
+      totalSales: number; 
+      unitPrice?: number | null;
+      esKg: boolean;
+    }>();
 
     ventasFiltradas.forEach((venta) => {
       if (venta.items && Array.isArray(venta.items)) {
         venta.items.forEach((item) => {
           const nombre = item.product_name || 'Producto sin nombre';
           const key = nombre.toLowerCase();
-          const existing = agg.get(key) || { nombreOriginal: nombre, cantidad: 0, totalSales: 0, unitPrice: null };
+          const existing = agg.get(key) || { 
+            nombreOriginal: nombre, 
+            cantidad: 0, 
+            totalSales: 0, 
+            unitPrice: null,
+            esKg: false 
+          };
 
           existing.cantidad += item.quantity;
           existing.totalSales += item.subtotal;
+          
+          // 🔹 Detectar si es venta por KG: cantidad tiene decimales
+          if (!Number.isInteger(item.quantity)) {
+            existing.esKg = true;
+          }
+          
           if (existing.unitPrice == null && item.quantity) {
             existing.unitPrice = item.subtotal / item.quantity;
           }
@@ -699,14 +718,28 @@ const Dashboard = () => {
 
     const rows: GananciaRow[] = Array.from(agg.entries()).map(([key, v]) => {
       const inv = inventarioMap.get(key);
-      const precio = inv?.price ?? v.unitPrice ?? null;
-      const costo = inv?.cost ?? null;
-      const gananciaUnit = precio != null && costo != null ? (precio - costo) : null;
-      const gananciaTotal = gananciaUnit != null ? gananciaUnit * v.cantidad : null;
+      let precio = inv?.price ?? v.unitPrice ?? null;
+      let costo = inv?.cost ?? null;
+      let gananciaTotal = null;
+      
+      if (v.esKg && costo != null && v.cantidad > 0) {
+        // 🔹 Para KG: 
+        // - costo unitario = costo_bulto / cantidad_kg
+        // - ganancia total = totalSales - (costo_unitario * cantidad)
+        const costoUnitario = costo / v.cantidad;
+        gananciaTotal = v.totalSales - (costoUnitario * v.cantidad);
+        costo = costoUnitario;
+      } else if (precio != null && costo != null) {
+        // 🔹 Para productos normales:
+        // - ganancia unitaria = precio - costo
+        // - ganancia total = ganancia_unitaria * cantidad
+        const gananciaUnit = precio - costo;
+        gananciaTotal = gananciaUnit * v.cantidad;
+      }
 
       return {
         nombre: v.nombreOriginal || key,
-        costo,
+        costo: costo != null && costo > 0 ? costo : null,
         precio,
         cantidad: v.cantidad,
         ganancia: gananciaTotal,
