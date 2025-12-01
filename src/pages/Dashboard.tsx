@@ -1,12 +1,12 @@
 // ============================================================================
 // DASHBOARD COMPLETO - Archivo único con todos los componentes
 // ============================================================================
-
+import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useState, useMemo } from 'react';
 import Layout from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DollarSign, TrendingUp, CreditCard, Calendar, PiggyBank } from 'lucide-react';
+import { DollarSign, TrendingUp, CreditCard, Calendar, PiggyBank, Trash2 } from 'lucide-react';
 import {
   format,
   startOfMonth,
@@ -448,19 +448,54 @@ const GananciasTable = ({ fechaInicio, fechaFin, data, loading }: { fechaInicio:
 };
 
 // ============================================================================
-// COMPONENTE: SalesTable (ajustado para mostrar cantidad junto al nombre)
+// COMPONENTE: SalesTable (con botón de eliminar para admin)
 // ============================================================================
 const SalesTable = ({
   ventas,
   loading,
   fechaInicio,
   fechaFin,
+  onSaleDeleted,
 }: {
   ventas: Sale[];
   loading: boolean;
   fechaInicio: string;
   fechaFin: string;
+  onSaleDeleted?: () => void;
 }) => {
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const { user } = useAuth(); // Usamos el hook de autenticación
+
+  // Verificación directa y simple
+  const isAdmin = user?.role === 'admin';
+
+  console.log('Usuario desde AuthContext:', user); // Para debug
+  console.log('Rol del usuario:', user?.role); // Para debug
+  console.log('¿Es admin?:', isAdmin); // Para debug
+
+  const handleDeleteSale = async (saleId: number) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar esta venta? Esta acción no se puede deshacer.')) {
+      return;
+    }
+
+    try {
+      setDeletingId(saleId);
+      await salesAPI.delete(saleId);
+      toast.success('Venta eliminada correctamente');
+      
+      // Llamar al callback para refrescar los datos
+      if (onSaleDeleted) {
+        onSaleDeleted();
+      }
+    } catch (error) {
+      console.error('Error eliminando venta:', error);
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error(msg || 'Error al eliminar la venta');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -468,6 +503,11 @@ const SalesTable = ({
         <p className="text-sm text-muted-foreground">
           {format(new Date(fechaInicio), "dd 'de' MMMM", { locale: es })} -{" "}
           {format(new Date(fechaFin), "dd 'de' MMMM yyyy", { locale: es })}
+          {isAdmin && (
+            <span className="block text-xs text-amber-600 mt-1">
+              ⚠️ Modo Administrador: Puedes eliminar ventas
+            </span>
+          )}
         </p>
       </CardHeader>
       <CardContent>
@@ -481,18 +521,21 @@ const SalesTable = ({
                   <th className="px-4 py-3 text-left text-sm font-medium">Método de pago</th>
                   <th className="px-4 py-3 text-left text-sm font-medium">Productos vendidos</th>
                   <th className="px-4 py-3 text-right text-sm font-medium">Total Venta</th>
+                  {isAdmin && (
+                    <th className="px-4 py-3 text-center text-sm font-medium">Acciones</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={isAdmin ? 6 : 5} className="px-4 py-8 text-center text-muted-foreground">
                       Cargando ventas...
                     </td>
                   </tr>
                 ) : ventas.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={isAdmin ? 6 : 5} className="px-4 py-8 text-center text-muted-foreground">
                       No hay ventas en este rango de fechas
                     </td>
                   </tr>
@@ -525,6 +568,30 @@ const SalesTable = ({
                       <td className="px-4 py-3 text-right text-sm font-medium">
                         ${venta.total.toLocaleString()}
                       </td>
+
+                      {/* Acciones - Solo para admin */}
+                      {isAdmin && (
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            onClick={() => handleDeleteSale(venta.id)}
+                            disabled={deletingId === venta.id}
+                            className="inline-flex items-center justify-center px-3 py-1 text-sm bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            title="Eliminar venta"
+                          >
+                            {deletingId === venta.id ? (
+                              <span className="flex items-center gap-1">
+                                <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                Eliminando...
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1">
+                                <Trash2 className="w-3 h-3" />
+                                Eliminar
+                              </span>
+                            )}
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))
                 )}
@@ -554,25 +621,25 @@ const Dashboard = () => {
   const [loadingProductos, setLoadingProductos] = useState(false);
 
   // Cargar ventas del rango seleccionado
-  useEffect(() => {
-    const fetchVentas = async () => {
-      try {
-        setLoading(true);
-        const data = await salesAPI.getAll({
-          start_date: `${fechaInicio}T00:00:00`,
-          end_date: `${fechaFin}T23:59:59`,
-        });
-        setVentas((data as Sale[]) || []);
-      } catch (error) {
-        console.error(error);
-        const msg = error instanceof Error ? error.message : String(error);
-        toast.error(msg || 'Error cargando las ventas');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchVentasData = async () => {
+    try {
+      setLoading(true);
+      const data = await salesAPI.getAll({
+        start_date: `${fechaInicio}T00:00:00`,
+        end_date: `${fechaFin}T23:59:59`,
+      });
+      setVentas((data as Sale[]) || []);
+    } catch (error) {
+      console.error(error);
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error(msg || 'Error cargando las ventas');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchVentas();
+  useEffect(() => {
+    fetchVentasData();
   }, [fechaInicio, fechaFin]);
 
   // Cargar ventas de hoy
@@ -876,7 +943,13 @@ const Dashboard = () => {
           </TabsContent>
 
           <TabsContent value="tabla">
-            <SalesTable ventas={ventasFiltradas} loading={loading} fechaInicio={fechaInicio} fechaFin={fechaFin} />
+            <SalesTable 
+              ventas={ventasFiltradas} 
+              loading={loading} 
+              fechaInicio={fechaInicio} 
+              fechaFin={fechaFin}
+              onSaleDeleted={fetchVentasData}
+            />
           </TabsContent>
         </Tabs>
       </div>

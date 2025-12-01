@@ -191,6 +191,16 @@ export const productsAPI = {
 
 // SALES
 export const salesAPI = {
+
+
+  // ... otras funciones existentes ...
+
+  delete: async (id: number) => {
+    return fetchAPI(`/sales/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
   getAll: async (params?: {
     skip?: number;
     limit?: number;
@@ -327,5 +337,7 @@ export const api = {
     isAuthenticated,
   },
 };
+
+
 
 export default api;
