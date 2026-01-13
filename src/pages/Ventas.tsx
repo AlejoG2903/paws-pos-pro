@@ -1,6 +1,7 @@
 /******************************************************************************************
  * VENTAS – POS PETSHOP
  * Compatible con ventas por monto cuando unidad_medida === "kg"
+ * ✅ Ahora con soporte para decimales
  ******************************************************************************************/
 
 import { useEffect, useState } from 'react';
@@ -17,10 +18,10 @@ interface Producto {
   id: number;
   name: string;
   description?: string;
-  price: number;
-  cost: number;
-  stock: number;
-  unidad_medida: string;   // kg, unidad, etc.
+  price: number;          // ✅ Ahora puede tener decimales
+  cost: number;           // ✅ Ahora puede tener decimales
+  stock: number;          // ✅ Ahora puede tener decimales (ej: 15.500 kg)
+  unidad_medida: string;  // kg, unidad, etc.
   barcode?: string;
   category_id: number;
   image_base64?: string | null;
@@ -29,9 +30,9 @@ interface Producto {
 
 interface CarritoItem {
   producto: Producto;
-  cantidad: number;
-  montoCop?: number;        // 🔹 Nuevo campo
-  kilosVendidos?: number;   // 🔹 Nuevo campo
+  cantidad: number;       // ✅ Ahora puede ser decimal (ej: 1.5 unidades)
+  montoCop?: number;
+  kilosVendidos?: number;
 }
 
 export default function Ventas() {
@@ -178,18 +179,16 @@ export default function Ventas() {
         payment_method: metodoPago,
         items: carrito.map(item => {
           if (item.producto.unidad_medida === "kg") {
-            // Para productos por kg: enviar el monto exacto, quantity = 1 (venta por monto)
             return {
               product_id: item.producto.id,
-              quantity: 1,                      // 1 porque es venta por monto total
-              price: item.montoCop || 0         // Precio = monto total vendido
+              quantity: item.kilosVendidos || 0,  // ✅ Enviar kilos vendidos como decimal
+              price: item.producto.price          // ✅ Precio por kg
             };
           }
 
-          // Para productos normales: quantity es la cantidad, price es el precio unitario
           return {
             product_id: item.producto.id,
-            quantity: item.cantidad,
+            quantity: item.cantidad,              // ✅ Puede ser decimal
             price: item.producto.price
           };
         })
@@ -233,19 +232,23 @@ export default function Ventas() {
     const itemEnCarrito = carrito.find(i => i.producto.id === productoId);
     if (!itemEnCarrito) return producto.stock;
 
-    // Para productos por kg, no restar del stock (se valida por monto)
+    // Para productos por kg, restar los kilos vendidos
     if (producto.unidad_medida === "kg") {
-      return producto.stock;
+      return producto.stock - (itemEnCarrito.kilosVendidos || 0);
     }
 
     // Para productos por unidad, restar cantidad en carrito
     return producto.stock - itemEnCarrito.cantidad;
   };
 
-  // 🔹 FUNCIÓN PARA FORMATEAR NÚMEROS CON SEPARADOR DE MILES
-  const formatearNumero = (valor: number | string): string => {
-    const num = typeof valor === 'string' ? valor.replace(/\D/g, '') : String(valor);
-    return Number(num).toLocaleString('es-CO');
+  // 🔹 FUNCIÓN PARA FORMATEAR NÚMEROS CON SEPARADOR DE MILES Y DECIMALES
+  const formatearNumero = (valor: number | string, decimales: number = 0): string => {
+    const num = typeof valor === 'string' ? parseFloat(valor.replace(/[^\d.-]/g, '')) : valor;
+    if (isNaN(num)) return '0';
+    return num.toLocaleString('es-CO', {
+      minimumFractionDigits: decimales,
+      maximumFractionDigits: decimales
+    });
   };
 
   // 🔹 FUNCIÓN PARA LIMPIAR NÚMERO (quitar separadores)
@@ -253,8 +256,8 @@ export default function Ventas() {
     return Number(valor.replace(/\D/g, ''));
   };
 
-  // 🔹 FUNCIÓN PARA CONVERTIR KG A LIBRAS (Factor: 1 kg = 2 lb para margen de error)
-  const kgToLb = (kg: number): number => kg * 2;
+  // 🔹 FUNCIÓN PARA CONVERTIR KG A LIBRAS (Factor: 1 kg = 2.20462 lb)
+  const kgToLb = (kg: number): number => kg * 2.20462;
 
   if (loading) {
     return (
@@ -328,7 +331,7 @@ export default function Ventas() {
             ) : (
               productosFiltrados.map(producto => {
                 const stockDisponible = getStockDisponible(producto.id);
-                const precioPorLb = producto.price / 2;
+                const precioPorLb = producto.price / 2.20462;
                 
                 return (
                   <div
@@ -349,29 +352,32 @@ export default function Ventas() {
                       className="w-32 h-32 object-cover mx-auto rounded mb-3"
                     />
 
-                    {/* 🔹 CANTIDAD DISPONIBLE Y UNIDAD DE MEDIDA */}
+                    {/* 🔹 CANTIDAD DISPONIBLE Y UNIDAD DE MEDIDA CON DECIMALES */}
                     <span className={`inline-block px-3 py-1 text-sm font-semibold rounded-full mb-3 ${
                       producto.unidad_medida === 'kg' 
                         ? 'bg-orange-100 text-orange-800' 
                         : 'bg-blue-100 text-blue-800'
                     }`}>
-                      {stockDisponible} {producto.unidad_medida === 'kg' ? 'Kg' : 'Unidad'}
+                      {producto.unidad_medida === 'kg' 
+                        ? `${formatearNumero(stockDisponible, 3)} Kg` 
+                        : `${formatearNumero(stockDisponible, 2)} ${producto.unidad_medida || 'Unidad'}`
+                      }
                     </span>
 
-                    {/* 🔹 PRECIO - MOSTRAR POR LB Y POR KG SI ES KG */}
+                    {/* 🔹 PRECIO - MOSTRAR POR LB Y POR KG SI ES KG CON DECIMALES */}
                     <div className="space-y-1 mb-3">
                       {producto.unidad_medida === 'kg' ? (
                         <>
                           <div className="text-sm text-green-600 font-semibold">
-                            ${precioPorLb.toLocaleString('es-CO')} / lb
+                            ${formatearNumero(precioPorLb, 2)} / lb
                           </div>
                           <div className="text-xs text-gray-500">
-                            ${producto.price.toLocaleString('es-CO')} / kg
+                            ${formatearNumero(producto.price, 2)} / kg
                           </div>
                         </>
                       ) : (
                         <div className="text-lg font-bold text-green-600">
-                          ${producto.price.toLocaleString('es-CO')}
+                          ${formatearNumero(producto.price, 2)}
                         </div>
                       )}
                     </div>
@@ -379,9 +385,9 @@ export default function Ventas() {
                     <Button 
                       className="w-full" 
                       onClick={() => agregarAlCarrito(producto)}
-                      disabled={stockDisponible === 0}
+                      disabled={stockDisponible <= 0}
                     >
-                      {stockDisponible === 0 ? 'Sin stock' : 'Agregar'}
+                      {stockDisponible <= 0 ? 'Sin stock' : 'Agregar'}
                     </Button>
                   </div>
                 );
@@ -417,7 +423,7 @@ export default function Ventas() {
 
                           // 🔹 VALIDAR QUE NO EXCEDA STOCK DISPONIBLE
                           if (monto > 0 && kilos > item.producto.stock) {
-                            toast.error(`Stock máximo disponible: ${item.producto.stock} kg (${kgToLb(item.producto.stock).toFixed(2)} lb) ($${(item.producto.stock * item.producto.price).toLocaleString('es-CO')})`);
+                            toast.error(`Stock máximo disponible: ${formatearNumero(item.producto.stock, 3)} kg (${formatearNumero(kgToLb(item.producto.stock), 2)} lb) ($${formatearNumero(item.producto.stock * item.producto.price, 2)})`);
                             return;
                           }
 
@@ -429,29 +435,29 @@ export default function Ventas() {
                         }}
                       />
 
-                      {/* Mostrar conversión en LIBRAS */}
+                      {/* Mostrar conversión en LIBRAS CON DECIMALES */}
                       {item.kilosVendidos ? (
                         <div className="text-xs mt-1 text-gray-600">
-                          Equivale a {kgToLb(item.kilosVendidos).toFixed(2)} lb
+                          Equivale a {formatearNumero(kgToLb(item.kilosVendidos), 2)} lb ({formatearNumero(item.kilosVendidos, 3)} kg)
                         </div>
                       ) : null}
 
-                      {/* 🔹 ALERTA SI QUEDA POCO STOCK CON VALOR EN COP Y LB */}
+                      {/* 🔹 ALERTA SI QUEDA POCO STOCK CON VALOR EN COP Y LB CON DECIMALES */}
                       {item.kilosVendidos && item.kilosVendidos > 0 ? (
                         <div className={`text-xs mt-1 ${
-                          item.producto.stock - item.kilosVendidos < 1
+                          item.producto.stock - item.kilosVendidos < 0.001
                             ? 'text-red-600 font-semibold'
                             : 'text-amber-600'
                         }`}>
                           {item.producto.stock - item.kilosVendidos < 0
-                            ? `❌ Insuficiente. Stock: ${item.producto.stock} kg (${kgToLb(item.producto.stock).toFixed(2)} lb) ($${(item.producto.stock * item.producto.price).toLocaleString('es-CO')})`
-                            : `⚠️ Disponible después: ${(item.producto.stock - item.kilosVendidos).toFixed(2)} kg (${kgToLb(item.producto.stock - item.kilosVendidos).toFixed(2)} lb) ($${((item.producto.stock - item.kilosVendidos) * item.producto.price).toLocaleString('es-CO')})`
+                            ? `❌ Insuficiente. Stock: ${formatearNumero(item.producto.stock, 3)} kg (${formatearNumero(kgToLb(item.producto.stock), 2)} lb) ($${formatearNumero(item.producto.stock * item.producto.price, 2)})`
+                            : `⚠️ Disponible después: ${formatearNumero(item.producto.stock - item.kilosVendidos, 3)} kg (${formatearNumero(kgToLb(item.producto.stock - item.kilosVendidos), 2)} lb) ($${formatearNumero((item.producto.stock - item.kilosVendidos) * item.producto.price, 2)})`
                           }
                         </div>
                       ) : null}
 
                       <div className="mt-2 font-semibold">
-                        Subtotal: ${item.montoCop?.toLocaleString('es-CO') || 0}
+                        Subtotal: ${formatearNumero(item.montoCop || 0, 2)}
                       </div>
 
                       <Button
@@ -463,7 +469,7 @@ export default function Ventas() {
                       </Button>
                     </div>
                   ) : (
-                    /* PRODUCTOS NORMALES */
+                    /* PRODUCTOS NORMALES CON DECIMALES */
                     <div className="flex items-center gap-3 mt-3">
                       <Button 
                         size="icon" 
@@ -471,7 +477,7 @@ export default function Ventas() {
                       >
                         <Minus />
                       </Button>
-                      <span className="font-bold">{item.cantidad}</span>
+                      <span className="font-bold">{formatearNumero(item.cantidad, 2)}</span>
                       <Button 
                         size="icon" 
                         onClick={() => aumentarCantidad(item.producto.id)}
@@ -489,7 +495,7 @@ export default function Ventas() {
                       </Button>
 
                       <div className="ml-auto font-semibold">
-                        ${(item.producto.price * item.cantidad).toLocaleString('es-CO')}
+                        ${formatearNumero(item.producto.price * item.cantidad, 2)}
                       </div>
                     </div>
                   )}
@@ -498,7 +504,7 @@ export default function Ventas() {
 
               <div className="text-lg font-semibold flex justify-between">
                 <span>Total:</span>
-                <span>${total.toLocaleString('es-CO')}</span>
+                <span>${formatearNumero(total, 2)}</span>
               </div>
 
               {/* 🔹 MÉTODO DE PAGO */}
@@ -516,7 +522,7 @@ export default function Ventas() {
                 </Select>
               </div>
 
-              {/* 🔹 CALCULADORA DE CAMBIO (solo si es efectivo) */}
+              {/* 🔹 CALCULADORA DE CAMBIO (solo si es efectivo) CON DECIMALES */}
               {metodoPago === "efectivo" && (
                 <div className="border rounded-lg p-4 bg-blue-50">
                   <label className="block text-sm font-medium mb-2">Monto Recibido</label>
@@ -532,21 +538,21 @@ export default function Ventas() {
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span>Total a pagar:</span>
-                        <span className="font-medium">${total.toLocaleString('es-CO')}</span>
+                        <span className="font-medium">${formatearNumero(total, 2)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Monto recibido:</span>
-                        <span className="font-medium">${Number(montoRecibido).toLocaleString('es-CO')}</span>
+                        <span className="font-medium">${formatearNumero(Number(montoRecibido), 2)}</span>
                       </div>
                       <div className="border-t pt-2 flex justify-between">
                         <span className="font-semibold">Cambio:</span>
                         <span className={`font-bold text-lg ${Number(montoRecibido) >= total ? 'text-green-600' : 'text-red-600'}`}>
-                          ${(Number(montoRecibido) - total).toLocaleString('es-CO')}
+                          ${formatearNumero(Number(montoRecibido) - total, 2)}
                         </span>
                       </div>
                       {Number(montoRecibido) < total && (
                         <div className="text-red-600 text-xs mt-2">
-                          ⚠️ Monto insuficiente. Falta: ${(total - Number(montoRecibido)).toLocaleString('es-CO')}
+                          ⚠️ Monto insuficiente. Falta: ${formatearNumero(total - Number(montoRecibido), 2)}
                         </div>
                       )}
                     </div>
