@@ -175,8 +175,20 @@ export default function Ventas() {
     setRegistrando(true);
 
     try {
+      // 🔹 CALCULAR SUBTOTAL Y TOTAL CORRECTAMENTE
+      const subtotal = carrito.reduce((sum, item) => {
+        if (item.producto.unidad_medida === "kg") {
+          return sum + (item.montoCop || 0);
+        }
+        return sum + (item.producto.price * item.cantidad);
+      }, 0);
+
       const venta = {
         payment_method: metodoPago,
+        subtotal: subtotal.toFixed(2),
+        tax: "0.00",
+        discount: "0.00",
+        total: subtotal.toFixed(2),
         items: carrito.map(item => {
           if (item.producto.unidad_medida === "kg") {
             return {
@@ -194,6 +206,8 @@ export default function Ventas() {
         })
       };
 
+      console.log('📤 Enviando venta:', venta); // Para debug
+
       await salesAPI.create(venta);
 
       toast.success("Venta registrada");
@@ -206,6 +220,7 @@ export default function Ventas() {
       const data = await productsAPI.getAll({ is_active: true });
       setProductos(data.filter((p: Producto) => p.stock > 0));
     } catch (e: any) {
+      console.error('❌ Error al registrar venta:', e);
       toast.error("Error registrando venta");
     } finally {
       setRegistrando(false);

@@ -17,6 +17,8 @@ import {
   addDays,
   subMonths,
   eachDayOfInterval,
+  parseISO,
+  isToday,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Input } from '@/components/ui/input';
@@ -39,26 +41,70 @@ import {
 // ============================================================================
 // TIPOS Y CONSTANTES
 // ============================================================================
-
-const COLORS: Record<string, string> = {
-  efectivo: '#10b981',
-  nequi: '#4c00ffff',
-  daviplata: '#ff0000ff',
+const parseNumber = (value: any): number => {
+  if (value === null || value === undefined || value === '') return 0;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    // Limpiar formato de moneda si existe
+    const cleaned = value.replace(/[^\d.-]/g, '');
+    const parsed = parseFloat(cleaned);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
 };
+
+const parseSale = (sale: any): Sale => {
+  return {
+    id: sale.id,
+    created_at: sale.created_at,
+    user: sale.user,
+    payment_method: sale.payment_method || 'efectivo',
+    total: parseNumber(sale.total),
+    subtotal: parseNumber(sale.subtotal),
+    tax: parseNumber(sale.tax),
+    discount: parseNumber(sale.discount),
+    items: Array.isArray(sale.items) ? sale.items.map((item: any) => ({
+      product_id: item.product_id,
+      product_name: item.product_name || 'Producto sin nombre',
+      quantity: parseNumber(item.quantity),
+      price: parseNumber(item.price),
+      subtotal: parseNumber(item.subtotal),
+      id: item.id,
+    })) : [],
+  };
+};
+
+interface SaleItem {
+  product_id: number;
+  product_name: string;
+  quantity: number;
+  price: number;
+  subtotal: number;
+  id: number;
+}
 
 interface Sale {
   id: number;
   created_at: string;
-  user?: { full_name: string };
+  user?: { 
+    id: number;
+    username: string;
+    full_name: string;
+    email: string;
+  };
   payment_method: string;
   total: number;
-  items?: { product_name: string; quantity: number; subtotal: number }[];
+  subtotal: number;
+  tax: number;
+  discount: number;
+  items: SaleItem[];
 }
 
 interface PaymentData {
   name: string;
   value: number;
   color: string;
+  count: number;
 }
 
 interface DailyData {
@@ -93,7 +139,17 @@ interface GananciaRow {
   precio?: number | null;
   cantidad: number;
   ganancia?: number | null;
+  totalVendido: number;
 }
+
+const COLORS: Record<string, string> = {
+  efectivo: '#10b981',
+  nequi: '#4c00ffff',
+  daviplata: '#ff0000ff',
+  card: '#f59e0b',
+  transfer: '#8b5cf6',
+  otro: '#6b7280',
+};
 
 // ============================================================================
 // COMPONENTE: StatsCards
@@ -133,7 +189,7 @@ const StatsCards = ({
             <p className="text-sm text-muted-foreground">Cargando...</p>
           ) : (
             <>
-              <div className="text-2xl font-bold">${totalHoy.toLocaleString()}</div>
+              <div className="text-2xl font-bold">${totalHoy.toLocaleString('es-CO')}</div>
               <p className="text-xs text-muted-foreground">{ventasHoyLength} ventas realizadas</p>
             </>
           )}
@@ -147,12 +203,14 @@ const StatsCards = ({
           <TrendingUp className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">${totalGeneral.toLocaleString()}</div>
-          <p className="text-xs text-muted-foreground">{cantidadVentas} ventas totales</p>
+          <div className="text-2xl font-bold">${totalGeneral.toLocaleString('es-CO')}</div>
+          <p className="text-xs text-muted-foreground">
+            {cantidadVentas} ventas totales • ${promedioVenta.toLocaleString('es-CO', { maximumFractionDigits: 0 })} promedio
+          </p>
         </CardContent>
       </Card>
 
-      {/* Ganancia Total (reemplaza 'Promedio por Venta') */}
+      {/* Ganancia Total */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium">Ganancia Total</CardTitle>
@@ -160,7 +218,7 @@ const StatsCards = ({
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">
-            ${gananciaTotal.toLocaleString()}
+            ${gananciaTotal.toLocaleString('es-CO')}
           </div>
           <p className="text-xs text-muted-foreground">Suma total de ganancias del período</p>
         </CardContent>
@@ -177,7 +235,7 @@ const StatsCards = ({
             <>
               <div className="text-2xl font-bold capitalize">{metodoPrincipal.name}</div>
               <p className="text-xs text-muted-foreground">
-                ${metodoPrincipal.value.toLocaleString()} total
+                ${metodoPrincipal.value.toLocaleString('es-CO')} • {metodoPrincipal.count} ventas
               </p>
             </>
           ) : (
@@ -242,12 +300,14 @@ const DateRangeSelector = ({
                   value={fechaInicio}
                   onChange={(e) => onFechaInicioChange(e.target.value)}
                   className="w-full sm:w-auto"
+                  max={fechaFin}
                 />
                 <Input
                   type="date"
                   value={fechaFin}
                   onChange={(e) => onFechaFinChange(e.target.value)}
                   className="w-full sm:w-auto"
+                  min={fechaInicio}
                 />
               </div>
             )}
@@ -259,7 +319,7 @@ const DateRangeSelector = ({
 };
 
 // ============================================================================
-// COMPONENTE: PaymentMethodsChart (lista simple)
+// COMPONENTE: PaymentMethodsChart
 // ============================================================================
 
 const PaymentMethodsChart = ({ data, totalGeneral }: { data: PaymentData[]; totalGeneral: number }) => {
@@ -277,29 +337,49 @@ const PaymentMethodsChart = ({ data, totalGeneral }: { data: PaymentData[]; tota
             No hay datos disponibles para el rango seleccionado
           </div>
         ) : (
-          <div className="grid gap-4">
-            {data.map((item) => (
-              <div
-                key={item.name}
-                className="flex justify-between items-center p-4 border rounded-xl shadow-sm hover:shadow-md transition-all"
-              >
-                <div className="flex items-center gap-4">
-                  <div
-                    style={{ background: item.color }}
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold"
-                  >
-                    {item.name.charAt(0).toUpperCase()}
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {data.map((item) => (
+                <div
+                  key={item.name}
+                  className="flex flex-col p-4 border rounded-xl shadow-sm hover:shadow-md transition-all"
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div
+                      style={{ background: item.color }}
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold"
+                    >
+                      {item.name.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="font-medium capitalize">{item.name}</span>
                   </div>
-                  <span className="font-medium capitalize">{item.name}</span>
-                </div>
-                <div className="text-right">
-                  <div className="font-bold text-lg">${item.value.toLocaleString()}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {totalGeneral > 0 ? `${((item.value / totalGeneral) * 100).toFixed(1)}%` : '0%'}
+                  <div className="space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Total:</span>
+                      <span className="font-bold">${item.value.toLocaleString('es-CO')}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Ventas:</span>
+                      <span className="font-medium">{item.count}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm text-muted-foreground">Porcentaje:</span>
+                      <span className="font-medium">
+                        {totalGeneral > 0 ? `${((item.value / totalGeneral) * 100).toFixed(1)}%` : '0%'}
+                      </span>
+                    </div>
                   </div>
                 </div>
+              ))}
+            </div>
+            
+            {/* Resumen total */}
+            <div className="mt-6 p-4 bg-muted/30 rounded-lg">
+              <div className="flex justify-between items-center">
+                <span className="font-medium">Total general del período:</span>
+                <span className="text-2xl font-bold">${totalGeneral.toLocaleString('es-CO')}</span>
               </div>
-            ))}
+            </div>
           </div>
         )}
       </CardContent>
@@ -312,6 +392,11 @@ const PaymentMethodsChart = ({ data, totalGeneral }: { data: PaymentData[]; tota
 // ============================================================================
 
 const DailyTrendChart = ({ data }: { data: DailyData[] }) => {
+  const chartData = data.map(item => ({
+    ...item,
+    total: Math.round(item.total), // Asegurar números enteros para el gráfico
+  }));
+
   return (
     <Card>
       <CardHeader>
@@ -323,13 +408,36 @@ const DailyTrendChart = ({ data }: { data: DailyData[] }) => {
           <div className="h-80 flex items-center justify-center text-muted-foreground">No hay datos disponibles</div>
         ) : (
           <ResponsiveContainer width="100%" height={400}>
-            <RechartsLine data={data}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="fecha" tick={{ fontSize: 12 }} angle={-45} textAnchor="end" height={80} />
-              <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-              <Tooltip formatter={(value: number) => [`$${value.toLocaleString()}`, 'Total']} labelFormatter={(label) => `Fecha: ${label}`} />
+            <RechartsLine data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis 
+                dataKey="fecha" 
+                tick={{ fontSize: 12 }} 
+                angle={-45} 
+                textAnchor="end" 
+                height={80}
+                tickFormatter={(value) => value.split('/').slice(0, 2).join('/')}
+              />
+              <YAxis 
+                tick={{ fontSize: 12 }} 
+                tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+                width={80}
+              />
+              <Tooltip 
+                formatter={(value: number) => [`$${value.toLocaleString('es-CO')}`, 'Total']} 
+                labelFormatter={(label) => `Fecha: ${label}`}
+                contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
+              />
               <Legend />
-              <Line type="monotone" dataKey="total" stroke="#3b82f6" strokeWidth={2} name="Ventas del Día" dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              <Line 
+                type="monotone" 
+                dataKey="total" 
+                stroke="#3b82f6" 
+                strokeWidth={2} 
+                name="Ventas del Día" 
+                dot={{ r: 4, strokeWidth: 2 }} 
+                activeDot={{ r: 6, strokeWidth: 0 }}
+              />
             </RechartsLine>
           </ResponsiveContainer>
         )}
@@ -343,6 +451,8 @@ const DailyTrendChart = ({ data }: { data: DailyData[] }) => {
 // ============================================================================
 
 const TopProductsChart = ({ data }: { data: ProductData[] }) => {
+  const maxCantidad = Math.max(...data.map(d => d.cantidad), 1);
+  
   return (
     <Card>
       <CardHeader>
@@ -354,36 +464,79 @@ const TopProductsChart = ({ data }: { data: ProductData[] }) => {
           <div className="h-80 flex items-center justify-center text-muted-foreground">No hay datos disponibles</div>
         ) : (
           <div className="grid lg:grid-cols-2 gap-6">
-            <ResponsiveContainer width="100%" height={400}>
-              <BarChart data={data} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" tick={{ fontSize: 12 }} />
-                <YAxis type="category" dataKey="nombre" tick={{ fontSize: 11 }} width={180} />
-                <Tooltip formatter={(value: number, name: string) => (name === 'cantidad' ? [value, 'Unidades'] : [`$${value.toLocaleString()}`, 'Total'])} />
-                <Legend />
-                <Bar dataKey="cantidad" fill="#8b5cf6" name="Cantidad Vendida" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-
             <div className="space-y-3">
-              <h4 className="font-semibold">Detalle de Productos</h4>
-              <div className="space-y-2 max-h-[360px] overflow-y-auto">
-                {data.map((item, index) => (
-                  <div key={item.nombre} className="flex justify-between items-center p-3 border rounded-lg hover:bg-muted/50">
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-sm">{index + 1}</div>
-                      <div>
-                        <p className="font-medium text-sm">{item.nombre}</p>
-                        <p className="text-xs text-muted-foreground">{item.cantidad} unidades</p>
+              <h4 className="font-semibold">Ranking de Productos</h4>
+              <div className="space-y-2 max-h-[360px] overflow-y-auto pr-2">
+                {data.map((item, index) => {
+                  const porcentaje = (item.cantidad / maxCantidad) * 100;
+                  return (
+                    <div key={item.nombre} className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-bold text-sm">
+                            {index + 1}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm truncate" title={item.nombre}>
+                              {item.nombre}
+                            </p>
+                            <p className="text-xs text-muted-foreground">{item.cantidad} unidades</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold text-sm">${item.total.toLocaleString('es-CO')}</div>
+                          <div className="text-xs text-muted-foreground">
+                            ${(item.total / item.cantidad).toLocaleString('es-CO', { maximumFractionDigits: 0 })} c/u
+                          </div>
+                        </div>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-primary/30 rounded-full" 
+                          style={{ width: `${porcentaje}%` }}
+                        />
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="font-bold text-sm">${item.total.toLocaleString()}</div>
-                      <div className="text-xs text-muted-foreground">${(item.total / item.cantidad).toLocaleString(undefined, { maximumFractionDigits: 0 })} c/u</div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
+            </div>
+
+            <div>
+              <h4 className="font-semibold mb-4">Distribución por Cantidad</h4>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={data} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis 
+                    type="number" 
+                    tick={{ fontSize: 12 }}
+                    tickFormatter={(v) => v.toLocaleString('es-CO')}
+                  />
+                  <YAxis 
+                    type="category" 
+                    dataKey="nombre" 
+                    tick={{ fontSize: 11 }} 
+                    width={150}
+                    tickFormatter={(value) => value.length > 15 ? value.substring(0, 15) + '...' : value}
+                  />
+                  <Tooltip 
+                    formatter={(value: number, name: string) => 
+                      name === 'cantidad' 
+                        ? [value.toLocaleString('es-CO'), 'Unidades'] 
+                        : [`$${value.toLocaleString('es-CO')}`, 'Total']
+                    }
+                    contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
+                  />
+                  <Legend />
+                  <Bar 
+                    dataKey="cantidad" 
+                    fill="#8b5cf6" 
+                    name="Cantidad Vendida" 
+                    radius={[0, 4, 4, 0]}
+                    maxBarSize={40}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </div>
         )}
@@ -397,46 +550,99 @@ const TopProductsChart = ({ data }: { data: ProductData[] }) => {
 // ============================================================================
 
 const GananciasTable = ({ fechaInicio, fechaFin, data, loading }: { fechaInicio: string; fechaFin: string; data: GananciaRow[]; loading: boolean }) => {
+  const totalGanancia = data.reduce((sum, row) => sum + (row.ganancia || 0), 0);
+  const totalVendido = data.reduce((sum, row) => sum + row.totalVendido, 0);
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Ganancias por Producto</CardTitle>
         <p className="text-sm text-muted-foreground">
-          {format(new Date(fechaInicio), "dd 'de' MMMM", { locale: es })} - {format(new Date(fechaFin), "dd 'de' MMMM yyyy", { locale: es })}
+          {format(parseISO(fechaInicio), "dd 'de' MMMM", { locale: es })} - {format(parseISO(fechaFin), "dd 'de' MMMM yyyy", { locale: es })}
         </p>
       </CardHeader>
       <CardContent>
-        <div className="rounded-md border">
+        <div className="rounded-md border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b bg-muted/50">
-                  <th className="px-4 py-3 text-left text-sm font-medium">Nombre Producto</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">Producto</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">Cantidad</th>
                   <th className="px-4 py-3 text-left text-sm font-medium">Costo</th>
                   <th className="px-4 py-3 text-left text-sm font-medium">Precio</th>
-                  <th className="px-4 py-3 text-right text-sm font-medium">Total Vendido (COP)</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium">Total Vendido</th>
                   <th className="px-4 py-3 text-right text-sm font-medium">Ganancia</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium">Margen</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Cargando datos...</td>
+                    <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        Cargando datos...
+                      </div>
+                    </td>
                   </tr>
                 ) : data.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No hay datos de ganancias en este rango</td>
+                    <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                      No hay datos de ganancias en este rango
+                    </td>
                   </tr>
                 ) : (
-                  data.map((row) => (
-                    <tr key={row.nombre} className="border-b hover:bg-muted/50">
-                      <td className="px-4 py-3 text-sm">{row.nombre}</td>
-                      <td className="px-4 py-3 text-sm">{row.costo != null ? `$${row.costo.toLocaleString('es-CO')}` : '—'}</td>
-                      <td className="px-4 py-3 text-sm">{row.precio != null ? `$${row.precio.toLocaleString('es-CO')}` : '—'}</td>
-                      <td className="px-4 py-3 text-right text-sm font-medium">${(row.cantidad * (row.precio || 0)).toLocaleString('es-CO')}</td>
-                      <td className="px-4 py-3 text-right text-sm font-medium">{row.ganancia != null ? `$${row.ganancia.toLocaleString('es-CO')}` : '—'}</td>
+                  <>
+                    {data.map((row) => {
+                      const margen = row.precio && row.costo && row.precio > 0 
+                        ? ((row.precio - row.costo) / row.precio) * 100 
+                        : null;
+                      
+                      return (
+                        <tr key={row.nombre} className="border-b hover:bg-muted/30">
+                          <td className="px-4 py-3 text-sm font-medium">{row.nombre}</td>
+                          <td className="px-4 py-3 text-sm">{row.cantidad.toLocaleString('es-CO')}</td>
+                          <td className="px-4 py-3 text-sm">
+                            {row.costo != null ? `$${row.costo.toLocaleString('es-CO', { minimumFractionDigits: 2 })}` : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            {row.precio != null ? `$${row.precio.toLocaleString('es-CO', { minimumFractionDigits: 2 })}` : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm font-medium">
+                            ${row.totalVendido.toLocaleString('es-CO')}
+                          </td>
+                          <td className={`px-4 py-3 text-right text-sm font-medium ${
+                            (row.ganancia || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            {row.ganancia != null ? `$${row.ganancia.toLocaleString('es-CO')}` : '—'}
+                          </td>
+                          <td className={`px-4 py-3 text-right text-sm font-medium ${
+                            (margen || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            {margen != null ? `${margen.toFixed(1)}%` : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    
+                    {/* Fila de totales */}
+                    <tr className="border-t bg-muted/20 font-semibold">
+                      <td className="px-4 py-3">TOTAL</td>
+                      <td className="px-4 py-3">
+                        {data.reduce((sum, row) => sum + row.cantidad, 0).toLocaleString('es-CO')}
+                      </td>
+                      <td className="px-4 py-3">—</td>
+                      <td className="px-4 py-3">—</td>
+                      <td className="px-4 py-3 text-right">${totalVendido.toLocaleString('es-CO')}</td>
+                      <td className={`px-4 py-3 text-right ${totalGanancia >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        ${totalGanancia.toLocaleString('es-CO')}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {totalVendido > 0 ? `${((totalGanancia / totalVendido) * 100).toFixed(1)}%` : '—'}
+                      </td>
                     </tr>
-                  ))
+                  </>
                 )}
               </tbody>
             </table>
@@ -448,7 +654,7 @@ const GananciasTable = ({ fechaInicio, fechaFin, data, loading }: { fechaInicio:
 };
 
 // ============================================================================
-// COMPONENTE: SalesTable (con botón de eliminar para admin)
+// COMPONENTE: SalesTable
 // ============================================================================
 const SalesTable = ({
   ventas,
@@ -464,14 +670,8 @@ const SalesTable = ({
   onSaleDeleted?: () => void;
 }) => {
   const [deletingId, setDeletingId] = useState<number | null>(null);
-  const { user } = useAuth(); // Usamos el hook de autenticación
-
-  // Verificación directa y simple
+  const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-
-  console.log('Usuario desde AuthContext:', user); // Para debug
-  console.log('Rol del usuario:', user?.role); // Para debug
-  console.log('¿Es admin?:', isAdmin); // Para debug
 
   const handleDeleteSale = async (saleId: number) => {
     if (!confirm('¿Estás seguro de que deseas eliminar esta venta? Esta acción no se puede deshacer.')) {
@@ -483,7 +683,6 @@ const SalesTable = ({
       await salesAPI.delete(saleId);
       toast.success('Venta eliminada correctamente');
       
-      // Llamar al callback para refrescar los datos
       if (onSaleDeleted) {
         onSaleDeleted();
       }
@@ -501,8 +700,8 @@ const SalesTable = ({
       <CardHeader>
         <CardTitle>Detalle de Ventas</CardTitle>
         <p className="text-sm text-muted-foreground">
-          {format(new Date(fechaInicio), "dd 'de' MMMM", { locale: es })} -{" "}
-          {format(new Date(fechaFin), "dd 'de' MMMM yyyy", { locale: es })}
+          {format(parseISO(fechaInicio), "dd 'de' MMMM", { locale: es })} -{" "}
+          {format(parseISO(fechaFin), "dd 'de' MMMM yyyy", { locale: es })}
           {isAdmin && (
             <span className="block text-xs text-amber-600 mt-1">
               ⚠️ Modo Administrador: Puedes eliminar ventas
@@ -511,16 +710,16 @@ const SalesTable = ({
         </p>
       </CardHeader>
       <CardContent>
-        <div className="rounded-md border">
+        <div className="rounded-md border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b bg-muted/50">
-                  <th className="px-4 py-3 text-left text-sm font-medium">Fecha</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">Fecha y Hora</th>
                   <th className="px-4 py-3 text-left text-sm font-medium">Vendedor</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">Método de pago</th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">Productos vendidos</th>
-                  <th className="px-4 py-3 text-right text-sm font-medium">Total Venta</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">Método</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium">Productos</th>
+                  <th className="px-4 py-3 text-right text-sm font-medium">Total</th>
                   {isAdmin && (
                     <th className="px-4 py-3 text-center text-sm font-medium">Acciones</th>
                   )}
@@ -530,7 +729,10 @@ const SalesTable = ({
                 {loading ? (
                   <tr>
                     <td colSpan={isAdmin ? 6 : 5} className="px-4 py-8 text-center text-muted-foreground">
-                      Cargando ventas...
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        Cargando ventas...
+                      </div>
                     </td>
                   </tr>
                 ) : ventas.length === 0 ? (
@@ -541,35 +743,37 @@ const SalesTable = ({
                   </tr>
                 ) : (
                   ventas.map((venta) => (
-                    <tr key={venta.id} className="border-b hover:bg-muted/50">
+                    <tr key={venta.id} className="border-b hover:bg-muted/30">
                       <td className="px-4 py-3 text-sm">
-                        {format(new Date(venta.created_at), 'dd/MM/yyyy HH:mm', { locale: es })}
+                        {format(parseISO(venta.created_at), 'dd/MM/yyyy HH:mm', { locale: es })}
                       </td>
                       <td className="px-4 py-3 text-sm">{venta.user?.full_name || '—'}</td>
-                      <td className="px-4 py-3 text-sm capitalize">{venta.payment_method}</td>
-
-                      {/* Productos vendidos */}
                       <td className="px-4 py-3 text-sm">
-                        {venta.items && venta.items.length > 0 ? (
-                          <ul className="space-y-1">
+                        <span className="capitalize px-2 py-1 rounded-full text-xs font-medium bg-muted">
+                          {venta.payment_method}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        {venta.items.length > 0 ? (
+                          <div className="space-y-1">
                             {venta.items.map((item, idx) => (
-                              <li key={idx} className="flex items-center justify-start gap-1">
-                                <span className="truncate">{item.product_name}</span>
-                                <span className="text-muted-foreground text-xs">x{item.quantity}</span>
-                              </li>
+                              <div key={idx} className="flex items-center justify-between gap-2">
+                                <span className="truncate max-w-[150px]" title={item.product_name}>
+                                  {item.product_name}
+                                </span>
+                                <span className="text-muted-foreground text-xs whitespace-nowrap">
+                                  x{item.quantity.toLocaleString('es-CO')} = ${item.subtotal.toLocaleString('es-CO')}
+                                </span>
+                              </div>
                             ))}
-                          </ul>
+                          </div>
                         ) : (
                           '—'
                         )}
                       </td>
-
-                      {/* Total venta */}
                       <td className="px-4 py-3 text-right text-sm font-medium">
-                        ${venta.total.toLocaleString()}
+                        ${venta.total.toLocaleString('es-CO')}
                       </td>
-
-                      {/* Acciones - Solo para admin */}
                       {isAdmin && (
                         <td className="px-4 py-3 text-center">
                           <button
@@ -628,11 +832,17 @@ const Dashboard = () => {
         start_date: `${fechaInicio}T00:00:00`,
         end_date: `${fechaFin}T23:59:59`,
       });
-      setVentas((data as Sale[]) || []);
+      
+      // Parsear las ventas
+      const parsedVentas = Array.isArray(data) 
+        ? data.map(parseSale)
+        : [];
+      setVentas(parsedVentas);
     } catch (error) {
-      console.error(error);
+      console.error('Error cargando ventas:', error);
       const msg = error instanceof Error ? error.message : String(error);
       toast.error(msg || 'Error cargando las ventas');
+      setVentas([]);
     } finally {
       setLoading(false);
     }
@@ -643,35 +853,45 @@ const Dashboard = () => {
   }, [fechaInicio, fechaFin]);
 
   // Cargar ventas de hoy
-  useEffect(() => {
-    const fetchVentasHoy = async () => {
-      try {
-        setLoadingHoy(true);
-        const data = await salesAPI.getAll({ today: true });
-        setVentasHoy((data as Sale[]) || []);
-      } catch (error) {
-        console.error(error);
-        const msg = error instanceof Error ? error.message : String(error);
-        toast.error(msg || 'Error cargando las ventas de hoy');
-      } finally {
-        setLoadingHoy(false);
-      }
-    };
+  const fetchVentasHoy = async () => {
+    try {
+      setLoadingHoy(true);
+      const hoy = new Date();
+      const data = await salesAPI.getAll({
+        start_date: format(hoy, 'yyyy-MM-dd') + 'T00:00:00',
+        end_date: format(hoy, 'yyyy-MM-dd') + 'T23:59:59',
+      });
+      
+      const parsedVentas = Array.isArray(data) 
+        ? data.map(parseSale)
+        : [];
+      setVentasHoy(parsedVentas);
+    } catch (error) {
+      console.error('Error cargando ventas de hoy:', error);
+      const msg = error instanceof Error ? error.message : String(error);
+      toast.error(msg || 'Error cargando las ventas de hoy');
+      setVentasHoy([]);
+    } finally {
+      setLoadingHoy(false);
+    }
+  };
 
+  useEffect(() => {
     fetchVentasHoy();
   }, []);
 
-  // Cargar productos del inventario (para calcular costos y precios)
+  // Cargar productos del inventario
   useEffect(() => {
     const fetchProductos = async () => {
       try {
         setLoadingProductos(true);
         const data = await productsAPI.getAll({ limit: 1000 });
-        setProductosInv((data as Product[]) || []);
+        setProductosInv(Array.isArray(data) ? data : []);
       } catch (error) {
-        console.error(error);
+        console.error('Error cargando productos:', error);
         const msg = error instanceof Error ? error.message : String(error);
         toast.error(msg || 'Error cargando los productos');
+        setProductosInv([]);
       } finally {
         setLoadingProductos(false);
       }
@@ -691,7 +911,7 @@ const Dashboard = () => {
         setFechaFin(format(hoy, 'yyyy-MM-dd'));
         break;
       case 'semana': {
-        const inicioSemana = startOfDay(addDays(hoy, -7));
+        const inicioSemana = startOfDay(addDays(hoy, -6)); // Últimos 7 días incluido hoy
         setFechaInicio(format(inicioSemana, 'yyyy-MM-dd'));
         setFechaFin(format(hoy, 'yyyy-MM-dd'));
         break;
@@ -711,35 +931,41 @@ const Dashboard = () => {
     }
   };
 
-  // Filtrar ventas por rango
+  // Filtrar ventas por rango (ya viene filtrado del backend, pero hacemos filtro adicional)
   const ventasFiltradas = useMemo(() => {
-    if (!ventas || ventas.length === 0) return [];
-    if (rangoSeleccionado === 'hoy') return ventas;
-
-    const inicio = startOfDay(new Date(fechaInicio + 'T00:00:00'));
-    const fin = endOfDay(new Date(fechaFin + 'T23:59:59'));
-
-    return ventas.filter((venta) => {
-      const fechaVenta = new Date(venta.created_at);
+    return ventas.filter(venta => {
+      const fechaVenta = parseISO(venta.created_at);
+      const inicio = startOfDay(parseISO(fechaInicio));
+      const fin = endOfDay(parseISO(fechaFin));
       return isWithinInterval(fechaVenta, { start: inicio, end: fin });
     });
-  }, [ventas, fechaInicio, fechaFin, rangoSeleccionado]);
+  }, [ventas, fechaInicio, fechaFin]);
 
   // Estadísticas generales
-  const totalGeneral = ventasFiltradas.reduce((sum, venta) => sum + (venta.total || 0), 0);
-  const totalHoy = ventasHoy.reduce((sum, venta) => sum + (venta.total || 0), 0);
+  const totalGeneral = useMemo(() => 
+    ventasFiltradas.reduce((sum, venta) => sum + venta.total, 0), 
+    [ventasFiltradas]
+  );
+  
+  const totalHoy = useMemo(() => 
+    ventasHoy.reduce((sum, venta) => sum + venta.total, 0), 
+    [ventasHoy]
+  );
+  
   const cantidadVentas = ventasFiltradas.length;
   const promedioVenta = cantidadVentas > 0 ? totalGeneral / cantidadVentas : 0;
 
-  // Mapa rápido del inventario: name (lowercase) -> { price, cost }
+  // Mapa del inventario
   const inventarioMap = useMemo(() => {
     const map = new Map<string, { price?: number | null; cost?: number | null }>();
     productosInv.forEach((p) => {
-      const name = (p.name || p.nombre || '').toString().toLowerCase();
-      map.set(name, {
-        price: (p.price ?? p.precio) as number | null,
-        cost: (p.cost ?? p.costo) as number | null,
-      });
+      const name = (p.name || p.nombre || '').toString().toLowerCase().trim();
+      if (name) {
+        map.set(name, {
+          price: parseNumber(p.price ?? p.precio),
+          cost: parseNumber(p.cost ?? p.costo),
+        });
+      }
     });
     return map;
   }, [productosInv]);
@@ -747,123 +973,158 @@ const Dashboard = () => {
   // Datos para la tabla de ganancias
   const gananciasData: GananciaRow[] = useMemo(() => {
     const agg = new Map<string, { 
-      nombreOriginal?: string; 
+      nombreOriginal: string; 
       cantidad: number; 
-      totalSales: number; 
-      unitPrice?: number | null;
+      totalVendido: number;
       esKg: boolean;
     }>();
 
     ventasFiltradas.forEach((venta) => {
-      if (venta.items && Array.isArray(venta.items)) {
-        venta.items.forEach((item) => {
-          const nombre = item.product_name || 'Producto sin nombre';
-          const key = nombre.toLowerCase();
-          const existing = agg.get(key) || { 
-            nombreOriginal: nombre, 
-            cantidad: 0, 
-            totalSales: 0, 
-            unitPrice: null,
-            esKg: false 
-          };
+      venta.items.forEach((item) => {
+        const nombre = item.product_name || 'Producto sin nombre';
+        const key = nombre.toLowerCase().trim();
+        const existing = agg.get(key) || { 
+          nombreOriginal: nombre, 
+          cantidad: 0, 
+          totalVendido: 0,
+          esKg: false 
+        };
 
-          existing.cantidad += item.quantity;
-          existing.totalSales += item.subtotal;
-          
-          // 🔹 Detectar si es venta por KG: cantidad tiene decimales
-          if (!Number.isInteger(item.quantity)) {
-            existing.esKg = true;
-          }
-          
-          if (existing.unitPrice == null && item.quantity) {
-            existing.unitPrice = item.subtotal / item.quantity;
-          }
-          agg.set(key, existing);
-        });
-      }
+        existing.cantidad += item.quantity;
+        existing.totalVendido += item.subtotal;
+        
+        // Detectar si es venta por KG
+        if (!Number.isInteger(item.quantity) && item.quantity % 1 !== 0) {
+          existing.esKg = true;
+        }
+        
+        agg.set(key, existing);
+      });
     });
 
-    const rows: GananciaRow[] = Array.from(agg.entries()).map(([key, v]) => {
-      const inv = inventarioMap.get(key);
-      let precio = inv?.price ?? v.unitPrice ?? null;
-      let costo = inv?.cost ?? null;
-      let gananciaTotal = null;
-      
-      if (v.esKg && costo != null && v.cantidad > 0) {
-        // 🔹 Para KG: 
-        // - costo unitario = costo_bulto / cantidad_kg
-        // - ganancia total = totalSales - (costo_unitario * cantidad)
-        const costoUnitario = costo / v.cantidad;
-        gananciaTotal = v.totalSales - (costoUnitario * v.cantidad);
-        costo = costoUnitario;
-      } else if (precio != null && costo != null) {
-        // 🔹 Para productos normales:
-        // - ganancia unitaria = precio - costo
-        // - ganancia total = ganancia_unitaria * cantidad
-        const gananciaUnit = precio - costo;
-        gananciaTotal = gananciaUnit * v.cantidad;
+    const rows: GananciaRow[] = Array.from(agg.entries()).map(([_, v]) => {
+      const inv = inventarioMap.get(v.nombreOriginal.toLowerCase().trim());
+      let precio: number | null = inv?.price ?? null;
+      let costo: number | null = inv?.cost ?? null;
+      let gananciaTotal: number | null = null;
+      let totalVendidoCalculado = v.totalVendido;
+
+      // Si no tenemos precio del inventario, calcularlo del promedio de venta
+      if (!precio && v.cantidad > 0) {
+        precio = v.totalVendido / v.cantidad;
+      }
+
+      // Calcular ganancia
+      if (precio !== null && costo !== null) {
+        if (v.esKg) {
+          // Para productos por KG: costo es por unidad de peso
+          gananciaTotal = v.totalVendido - (costo * v.cantidad);
+        } else {
+          // Para productos unitarios
+          const gananciaUnit = precio - costo;
+          gananciaTotal = gananciaUnit * v.cantidad;
+        }
       }
 
       return {
-        nombre: v.nombreOriginal || key,
-        costo: costo != null && costo > 0 ? costo : null,
+        nombre: v.nombreOriginal,
+        costo,
         precio,
         cantidad: v.cantidad,
         ganancia: gananciaTotal,
+        totalVendido: v.totalVendido,
       };
     });
 
-    rows.sort((a, b) => (b.ganancia ?? -Infinity) - (a.ganancia ?? -Infinity));
-    return rows;
+    // Filtrar productos sin costo o precio (opcional)
+    const filteredRows = rows.filter(row => row.costo != null && row.precio != null);
+    filteredRows.sort((a, b) => (b.ganancia ?? -Infinity) - (a.ganancia ?? -Infinity));
+    
+    return filteredRows;
   }, [ventasFiltradas, inventarioMap]);
 
   // Ganancia total
-  const gananciaTotal = useMemo(() => gananciasData.reduce((sum, r) => sum + (r.ganancia ?? 0), 0), [gananciasData]);
+  const gananciaTotal = useMemo(() => 
+    gananciasData.reduce((sum, r) => sum + (r.ganancia || 0), 0), 
+    [gananciasData]
+  );
 
   // Métodos de pago
   const pagosPorMetodo = useMemo(() => {
-    const metodos: Record<string, number> = { efectivo: 0, nequi: 0, daviplata: 0, card: 0, transfer: 0 };
+    const metodos: Record<string, { total: number; count: number }> = {};
+    
     ventasFiltradas.forEach((venta) => {
       const metodo = (venta.payment_method || 'otro').toLowerCase();
-      metodos[metodo] = (metodos[metodo] || 0) + (venta.total || 0);
+      if (!metodos[metodo]) {
+        metodos[metodo] = { total: 0, count: 0 };
+      }
+      metodos[metodo].total += venta.total;
+      metodos[metodo].count += 1;
     });
+    
     return metodos;
   }, [ventasFiltradas]);
 
   const dataPie: PaymentData[] = useMemo(() => {
     return Object.entries(pagosPorMetodo)
-      .filter(([_, v]) => v > 0)
-      .map(([met, val]) => ({
+      .map(([met, data]) => ({
         name: met,
-        value: val,
-        color: COLORS[met] ?? '#3b82f6',
-      }));
+        value: data.total,
+        color: COLORS[met] ?? '#6b7280',
+        count: data.count,
+      }))
+      .sort((a, b) => b.value - a.value);
   }, [pagosPorMetodo]);
+
+  const metodoPrincipal = dataPie[0] || null;
 
   // Datos para gráficas de líneas (ventas por día)
   const dataLineas: DailyData[] = useMemo(() => {
-    if (ventasFiltradas.length === 0) {
-      return [];
+    if (ventasFiltradas.length === 0) return [];
+
+    const inicio = parseISO(fechaInicio);
+    const fin = parseISO(fechaFin);
+    
+    // Si es solo hoy, mostrar por horas en lugar de días
+    if (rangoSeleccionado === 'hoy') {
+      const horas = Array.from({ length: 24 }, (_, i) => i);
+      const ventasPorHora = horas.map(hora => {
+        const ventasHora = ventasFiltradas.filter(venta => {
+          const fechaVenta = parseISO(venta.created_at);
+          return fechaVenta.getHours() === hora;
+        });
+        
+        const totalHora = ventasHora.reduce((sum, v) => sum + v.total, 0);
+        return {
+          fecha: `${hora.toString().padStart(2, '0')}:00`,
+          fechaCompleta: `${hora.toString().padStart(2, '0')}:00`,
+          total: totalHora,
+          cantidad: ventasHora.length,
+          diaSemana: format(inicio, 'EEEE', { locale: es }),
+        };
+      });
+      
+      return ventasPorHora;
     }
 
-    const inicio = rangoSeleccionado === 'hoy' ? startOfDay(new Date()) : new Date(fechaInicio + 'T00:00:00');
-    const fin = rangoSeleccionado === 'hoy' ? endOfDay(new Date()) : new Date(fechaFin + 'T23:59:59');
-
+    // Para rangos mayores a un día
     const todosLosDias = eachDayOfInterval({ start: inicio, end: fin });
 
     const ventasPorDia = todosLosDias.map((dia) => {
       const fechaStr = format(dia, 'dd/MM', { locale: es });
-      return { fecha: fechaStr, fechaCompleta: format(dia, 'yyyy-MM-dd'), total: 0, cantidad: 0, diaSemana: format(dia, 'EEEE', { locale: es }) };
-    });
-
-    ventasFiltradas.forEach((venta) => {
-      const fechaVenta = new Date(venta.created_at);
-      const fechaCompleta = format(fechaVenta, 'yyyy-MM-dd');
-      const dia = ventasPorDia.find((d) => d.fechaCompleta === fechaCompleta);
-      if (dia) {
-        dia.total += venta.total;
-        dia.cantidad += 1;
-      }
+      const ventasDia = ventasFiltradas.filter(venta => {
+        const fechaVenta = parseISO(venta.created_at);
+        return format(fechaVenta, 'yyyy-MM-dd') === format(dia, 'yyyy-MM-dd');
+      });
+      
+      const totalDia = ventasDia.reduce((sum, v) => sum + v.total, 0);
+      return {
+        fecha: fechaStr,
+        fechaCompleta: format(dia, 'yyyy-MM-dd'),
+        total: totalDia,
+        cantidad: ventasDia.length,
+        diaSemana: format(dia, 'EEEE', { locale: es }),
+      };
     });
 
     return ventasPorDia;
@@ -872,16 +1133,24 @@ const Dashboard = () => {
   // Top productos
   const topProductos: ProductData[] = useMemo(() => {
     const map = new Map<string, { cantidad: number; total: number }>();
+    
     ventasFiltradas.forEach((venta) => {
-      venta.items?.forEach((it) => {
-        const name = it.product_name || 'Producto sin nombre';
+      venta.items.forEach((item) => {
+        const name = item.product_name || 'Producto sin nombre';
         const curr = map.get(name) || { cantidad: 0, total: 0 };
-        map.set(name, { cantidad: curr.cantidad + it.quantity, total: curr.total + it.subtotal });
+        map.set(name, { 
+          cantidad: curr.cantidad + item.quantity, 
+          total: curr.total + item.subtotal 
+        });
       });
     });
 
     return Array.from(map.entries())
-      .map(([nombre, d]) => ({ nombre, cantidad: d.cantidad, total: d.total }))
+      .map(([nombre, d]) => ({ 
+        nombre, 
+        cantidad: d.cantidad, 
+        total: d.total 
+      }))
       .sort((a, b) => b.cantidad - a.cantidad)
       .slice(0, 10);
   }, [ventasFiltradas]);
@@ -912,7 +1181,7 @@ const Dashboard = () => {
           totalGeneral={totalGeneral}
           cantidadVentas={cantidadVentas}
           promedioVenta={promedioVenta}
-          metodoPrincipal={dataPie[0] || null}
+          metodoPrincipal={metodoPrincipal}
           gananciaTotal={gananciaTotal}
         />
 
@@ -926,29 +1195,34 @@ const Dashboard = () => {
             <TabsTrigger value="ganancias">💰 Ganancias</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="metodos">
-            <PaymentMethodsChart data={dataPie} totalGeneral={totalGeneral} />
-          </TabsContent>
-
-          <TabsContent value="tendencia">
-            <DailyTrendChart data={dataLineas} />
-          </TabsContent>
-
-          <TabsContent value="productos">
-            <TopProductsChart data={topProductos} />
-          </TabsContent>
-
-          <TabsContent value="ganancias">
-            <GananciasTable fechaInicio={fechaInicio} fechaFin={fechaFin} data={gananciasData} loading={loading || loadingProductos} />
-          </TabsContent>
-
-          <TabsContent value="tabla">
+          <TabsContent value="tabla" className="space-y-4">
             <SalesTable 
               ventas={ventasFiltradas} 
               loading={loading} 
               fechaInicio={fechaInicio} 
               fechaFin={fechaFin}
               onSaleDeleted={fetchVentasData}
+            />
+          </TabsContent>
+
+          <TabsContent value="metodos" className="space-y-4">
+            <PaymentMethodsChart data={dataPie} totalGeneral={totalGeneral} />
+          </TabsContent>
+
+          <TabsContent value="tendencia" className="space-y-4">
+            <DailyTrendChart data={dataLineas} />
+          </TabsContent>
+
+          <TabsContent value="productos" className="space-y-4">
+            <TopProductsChart data={topProductos} />
+          </TabsContent>
+
+          <TabsContent value="ganancias" className="space-y-4">
+            <GananciasTable 
+              fechaInicio={fechaInicio} 
+              fechaFin={fechaFin} 
+              data={gananciasData} 
+              loading={loading || loadingProductos} 
             />
           </TabsContent>
         </Tabs>
