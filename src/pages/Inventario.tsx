@@ -1,3 +1,4 @@
+import { formatearNumero } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import Layout from '@/components/Layout';
 import { Card, CardContent } from '@/components/ui/card';
@@ -113,12 +114,16 @@ const Inventario = () => {
   const handleOpenModal = (producto?: Product) => {
     if (producto) {
       setEditingProduct(producto);
+      // Sanitizar valores: quitar decimales para edición
+      const precioEntero = Math.floor(Number(producto.price || 0));
+      const costoEntero = Math.floor(Number(producto.cost || 0));
+      const stockEntero = Math.floor(Number(producto.stock || 0));
       setFormData({
         name: producto.name,
         description: producto.description || '',
-        price: producto.price.toString(),
-        cost: producto.cost.toString(),
-        stock: producto.stock.toString(),
+        price: String(precioEntero),
+        cost: String(costoEntero),
+        stock: String(stockEntero),
         unit: producto.unidad_medida || 'unidad',
         category_id: producto.category_id.toString(),
         barcode: producto.barcode || '',
@@ -356,10 +361,12 @@ const Inventario = () => {
                           {producto.description || '-'}
                         </td>
                         <td className="py-3 px-3">
-                          ${producto.price.toLocaleString()}
+                          ${formatearNumero(producto.price)}
                         </td>
                         <td className="py-3 px-3">
-                          {producto.stock} {producto.unidad_medida || 'unidad'}
+                          {producto.unidad_medida === 'kg' 
+                            ? formatearNumero(producto.stock, 1) 
+                            : formatearNumero(producto.stock)} {producto.unidad_medida || 'unidad'}
                         </td>
                         <td className="py-3 px-3">
                           {getCategoryName(producto)}
@@ -467,12 +474,14 @@ const Inventario = () => {
               <Label htmlFor="price">Precio *</Label>
               <Input
                 id="price"
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={formData.price}
-                onChange={(e) =>
-                  setFormData({ ...formData, price: e.target.value })
-                }
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, '');
+                  setFormData({ ...formData, price: value });
+                }}
                 placeholder="0"
                 required
               />
@@ -482,12 +491,14 @@ const Inventario = () => {
               <Label htmlFor="cost">Costo</Label>
               <Input
                 id="cost"
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={formData.cost}
-                onChange={(e) =>
-                  setFormData({ ...formData, cost: e.target.value })
-                }
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, '');
+                  setFormData({ ...formData, cost: value });
+                }}
                 placeholder="0"
               />
             </div>

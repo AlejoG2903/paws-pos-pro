@@ -7,6 +7,7 @@ import Layout from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DollarSign, TrendingUp, CreditCard, Calendar, PiggyBank, Trash2 } from 'lucide-react';
+import { formatearNumero } from '@/lib/utils';
 import {
   format,
   startOfMonth,
@@ -189,7 +190,7 @@ const StatsCards = ({
             <p className="text-sm text-muted-foreground">Cargando...</p>
           ) : (
             <>
-              <div className="text-2xl font-bold">${totalHoy.toLocaleString('es-CO')}</div>
+              <div className="text-2xl font-bold">${formatearNumero(totalHoy)}</div>
               <p className="text-xs text-muted-foreground">{ventasHoyLength} ventas realizadas</p>
             </>
           )}
@@ -203,9 +204,9 @@ const StatsCards = ({
           <TrendingUp className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">${totalGeneral.toLocaleString('es-CO')}</div>
+          <div className="text-2xl font-bold">${formatearNumero(totalGeneral)}</div>
           <p className="text-xs text-muted-foreground">
-            {cantidadVentas} ventas totales • ${promedioVenta.toLocaleString('es-CO', { maximumFractionDigits: 0 })} promedio
+            {cantidadVentas} ventas totales • ${formatearNumero(promedioVenta)} promedio
           </p>
         </CardContent>
       </Card>
@@ -218,7 +219,7 @@ const StatsCards = ({
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">
-            ${gananciaTotal.toLocaleString('es-CO')}
+            ${formatearNumero(gananciaTotal)}
           </div>
           <p className="text-xs text-muted-foreground">Suma total de ganancias del período</p>
         </CardContent>
@@ -235,7 +236,7 @@ const StatsCards = ({
             <>
               <div className="text-2xl font-bold capitalize">{metodoPrincipal.name}</div>
               <p className="text-xs text-muted-foreground">
-                ${metodoPrincipal.value.toLocaleString('es-CO')} • {metodoPrincipal.count} ventas
+                ${formatearNumero(metodoPrincipal.value)} • {metodoPrincipal.count} ventas
               </p>
             </>
           ) : (
@@ -356,7 +357,7 @@ const PaymentMethodsChart = ({ data, totalGeneral }: { data: PaymentData[]; tota
                   <div className="space-y-1">
                     <div className="flex justify-between">
                       <span className="text-sm text-muted-foreground">Total:</span>
-                      <span className="font-bold">${item.value.toLocaleString('es-CO')}</span>
+                      <span className="font-bold">${formatearNumero(item.value)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-muted-foreground">Ventas:</span>
@@ -377,7 +378,7 @@ const PaymentMethodsChart = ({ data, totalGeneral }: { data: PaymentData[]; tota
             <div className="mt-6 p-4 bg-muted/30 rounded-lg">
               <div className="flex justify-between items-center">
                 <span className="font-medium">Total general del período:</span>
-                <span className="text-2xl font-bold">${totalGeneral.toLocaleString('es-CO')}</span>
+                <span className="text-2xl font-bold">${formatearNumero(totalGeneral)}</span>
               </div>
             </div>
           </div>
@@ -424,7 +425,7 @@ const DailyTrendChart = ({ data }: { data: DailyData[] }) => {
                 width={80}
               />
               <Tooltip 
-                formatter={(value: number) => [`$${value.toLocaleString('es-CO')}`, 'Total']} 
+                formatter={(value: number) => [`$${formatearNumero(value)}`, 'Total']}
                 labelFormatter={(label) => `Fecha: ${label}`}
                 contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
               />
@@ -484,9 +485,9 @@ const TopProductsChart = ({ data }: { data: ProductData[] }) => {
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="font-bold text-sm">${item.total.toLocaleString('es-CO')}</div>
+                          <div className="font-bold text-sm">${formatearNumero(item.total)}</div>
                           <div className="text-xs text-muted-foreground">
-                            ${(item.total / item.cantidad).toLocaleString('es-CO', { maximumFractionDigits: 0 })} c/u
+                            ${formatearNumero(item.total / item.cantidad)} c/u
                           </div>
                         </div>
                       </div>
@@ -510,7 +511,7 @@ const TopProductsChart = ({ data }: { data: ProductData[] }) => {
                   <XAxis 
                     type="number" 
                     tick={{ fontSize: 12 }}
-                    tickFormatter={(v) => v.toLocaleString('es-CO')}
+                    tickFormatter={(v) => formatearNumero(v)}
                   />
                   <YAxis 
                     type="category" 
@@ -520,10 +521,10 @@ const TopProductsChart = ({ data }: { data: ProductData[] }) => {
                     tickFormatter={(value) => value.length > 15 ? value.substring(0, 15) + '...' : value}
                   />
                   <Tooltip 
-                    formatter={(value: number, name: string) => 
-                      name === 'cantidad' 
-                        ? [value.toLocaleString('es-CO'), 'Unidades'] 
-                        : [`$${value.toLocaleString('es-CO')}`, 'Total']
+                      formatter={(value: number, name: string) => 
+                        name === 'cantidad' 
+                          ? [formatearNumero(value), 'Unidades'] 
+                          : [`$${formatearNumero(value)}`, 'Total']
                     }
                     contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
                   />
@@ -602,20 +603,20 @@ const GananciasTable = ({ fechaInicio, fechaFin, data, loading }: { fechaInicio:
                       return (
                         <tr key={row.nombre} className="border-b hover:bg-muted/30">
                           <td className="px-4 py-3 text-sm font-medium">{row.nombre}</td>
-                          <td className="px-4 py-3 text-sm">{row.cantidad.toLocaleString('es-CO')}</td>
+                          <td className="px-4 py-3 text-sm">{formatearNumero(row.cantidad)}</td>
                           <td className="px-4 py-3 text-sm">
-                            {row.costo != null ? `$${row.costo.toLocaleString('es-CO', { minimumFractionDigits: 2 })}` : '—'}
+                            {row.costo != null ? `$${formatearNumero(row.costo)}` : '—'}
                           </td>
                           <td className="px-4 py-3 text-sm">
-                            {row.precio != null ? `$${row.precio.toLocaleString('es-CO', { minimumFractionDigits: 2 })}` : '—'}
+                            {row.precio != null ? `$${formatearNumero(row.precio)}` : '—'}
                           </td>
                           <td className="px-4 py-3 text-right text-sm font-medium">
-                            ${row.totalVendido.toLocaleString('es-CO')}
+                            ${formatearNumero(row.totalVendido)}
                           </td>
                           <td className={`px-4 py-3 text-right text-sm font-medium ${
                             (row.ganancia || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                           }`}>
-                            {row.ganancia != null ? `$${row.ganancia.toLocaleString('es-CO')}` : '—'}
+                            {row.ganancia != null ? `$${formatearNumero(row.ganancia)}` : '—'}
                           </td>
                           <td className={`px-4 py-3 text-right text-sm font-medium ${
                             (margen || 0) >= 0 ? 'text-green-600' : 'text-red-600'
@@ -630,13 +631,13 @@ const GananciasTable = ({ fechaInicio, fechaFin, data, loading }: { fechaInicio:
                     <tr className="border-t bg-muted/20 font-semibold">
                       <td className="px-4 py-3">TOTAL</td>
                       <td className="px-4 py-3">
-                        {data.reduce((sum, row) => sum + row.cantidad, 0).toLocaleString('es-CO')}
+                        {formatearNumero(data.reduce((sum, row) => sum + row.cantidad, 0))}
                       </td>
                       <td className="px-4 py-3">—</td>
                       <td className="px-4 py-3">—</td>
-                      <td className="px-4 py-3 text-right">${totalVendido.toLocaleString('es-CO')}</td>
+                      <td className="px-4 py-3 text-right">${formatearNumero(totalVendido)}</td>
                       <td className={`px-4 py-3 text-right ${totalGanancia >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        ${totalGanancia.toLocaleString('es-CO')}
+                        ${formatearNumero(totalGanancia)}
                       </td>
                       <td className="px-4 py-3 text-right">
                         {totalVendido > 0 ? `${((totalGanancia / totalVendido) * 100).toFixed(1)}%` : '—'}
@@ -762,7 +763,7 @@ const SalesTable = ({
                                   {item.product_name}
                                 </span>
                                 <span className="text-muted-foreground text-xs whitespace-nowrap">
-                                  x{item.quantity.toLocaleString('es-CO')} = ${item.subtotal.toLocaleString('es-CO')}
+                                  x{formatearNumero(item.quantity)} = ${formatearNumero(item.subtotal)}
                                 </span>
                               </div>
                             ))}
@@ -772,7 +773,7 @@ const SalesTable = ({
                         )}
                       </td>
                       <td className="px-4 py-3 text-right text-sm font-medium">
-                        ${venta.total.toLocaleString('es-CO')}
+                        ${formatearNumero(venta.total)}
                       </td>
                       {isAdmin && (
                         <td className="px-4 py-3 text-center">

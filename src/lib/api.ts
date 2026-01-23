@@ -26,7 +26,8 @@ const fetchAPI = async (endpoint: string, options: RequestInit = {}) => {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Error desconocido' }));
-    throw new Error(error.detail || 'Error en la petición');
+    const errorMessage = `${response.status}: ${error.detail || 'Error en la petición'}`;
+    throw new Error(errorMessage);
   }
 
   // Para respuestas 204 No Content

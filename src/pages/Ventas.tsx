@@ -1,3 +1,4 @@
+import { formatearNumero } from '@/lib/utils';
 /******************************************************************************************
  * VENTAS – POS PETSHOP
  * Compatible con ventas por monto cuando unidad_medida === "kg"
@@ -88,7 +89,20 @@ export default function Ventas() {
     };
     cargar();
   }, []);
-
+  // 🔹 ACTUALIZAR PRODUCTOS EN CARRITO CUANDO CAMBIE EL STOCK
+  useEffect(() => {
+    if (productos.length === 0) return;
+    
+    setCarrito(prevCarrito =>
+      prevCarrito.map(item => {
+        const productoActualizado = productos.find(p => p.id === item.producto.id);
+        if (productoActualizado) {
+          return { ...item, producto: productoActualizado };
+        }
+        return item;
+      })
+    );
+  }, [productos]);
   /**************************************************
    * AGREGAR AL CARRITO
    **************************************************/
@@ -185,22 +199,29 @@ export default function Ventas() {
 
       const venta = {
         payment_method: metodoPago,
-        subtotal: subtotal.toFixed(2),
-        tax: "0.00",
-        discount: "0.00",
-        total: subtotal.toFixed(2),
+        subtotal: subtotal,
+        tax: 0,
+        discount: 0,
+        total: subtotal,
         items: carrito.map(item => {
           if (item.producto.unidad_medida === "kg") {
+            const kilosRedondeados = Math.round((item.kilosVendidos || 0) * 1000) / 1000;
+            const montoExacto = item.montoCop || 0;
+            // Calcular precio ajustado para que quantity * price = montoCop exacto
+            const precioAjustado = kilosRedondeados > 0 
+              ? Math.round((montoExacto / kilosRedondeados) * 100) / 100 
+              : item.producto.price;
+            
             return {
               product_id: item.producto.id,
-              quantity: item.kilosVendidos || 0,  // ✅ Enviar kilos vendidos como decimal
-              price: item.producto.price          // ✅ Precio por kg
+              quantity: kilosRedondeados,
+              price: precioAjustado
             };
           }
 
           return {
             product_id: item.producto.id,
-            quantity: item.cantidad,              // ✅ Puede ser decimal
+            quantity: item.cantidad,
             price: item.producto.price
           };
         })
@@ -217,6 +238,7 @@ export default function Ventas() {
       localStorage.removeItem(clave);
       setMontoRecibido('');
 
+      // Recargar productos para actualizar stock
       const data = await productsAPI.getAll({ is_active: true });
       setProductos(data.filter((p: Producto) => p.stock > 0));
     } catch (e: any) {
@@ -234,7 +256,6 @@ export default function Ventas() {
   });
 
   const getProductImage = (producto: Producto) => {
-    if (producto.image_url) return producto.image_url;
     if (producto.image_base64) return `data:image/jpeg;base64,${producto.image_base64}`;
     return "/placeholder-image.png";
   };
@@ -256,15 +277,7 @@ export default function Ventas() {
     return producto.stock - itemEnCarrito.cantidad;
   };
 
-  // 🔹 FUNCIÓN PARA FORMATEAR NÚMEROS CON SEPARADOR DE MILES Y DECIMALES
-  const formatearNumero = (valor: number | string, decimales: number = 0): string => {
-    const num = typeof valor === 'string' ? parseFloat(valor.replace(/[^\d.-]/g, '')) : valor;
-    if (isNaN(num)) return '0';
-    return num.toLocaleString('es-CO', {
-      minimumFractionDigits: decimales,
-      maximumFractionDigits: decimales
-    });
-  };
+  // (Se usa la versión de utils importada al inicio)
 
   // 🔹 FUNCIÓN PARA LIMPIAR NÚMERO (quitar separadores)
   const limpiarNumero = (valor: string): number => {
@@ -374,8 +387,8 @@ export default function Ventas() {
                         : 'bg-blue-100 text-blue-800'
                     }`}>
                       {producto.unidad_medida === 'kg' 
-                        ? `${formatearNumero(stockDisponible, 3)} Kg` 
-                        : `${formatearNumero(stockDisponible, 2)} ${producto.unidad_medida || 'Unidad'}`
+                        ? `${formatearNumero(stockDisponible, 1)} Kg` 
+                        : `${formatearNumero(stockDisponible)} ${producto.unidad_medida || 'Unidad'}`
                       }
                     </span>
 
@@ -384,15 +397,15 @@ export default function Ventas() {
                       {producto.unidad_medida === 'kg' ? (
                         <>
                           <div className="text-sm text-green-600 font-semibold">
-                            ${formatearNumero(precioPorLb, 2)} / lb
+                            ${formatearNumero(precioPorLb)} / lb
                           </div>
                           <div className="text-xs text-gray-500">
-                            ${formatearNumero(producto.price, 2)} / kg
+                            ${formatearNumero(producto.price)} / kg
                           </div>
                         </>
                       ) : (
                         <div className="text-lg font-bold text-green-600">
-                          ${formatearNumero(producto.price, 2)}
+                          ${formatearNumero(producto.price)}
                         </div>
                       )}
                     </div>
@@ -430,15 +443,18 @@ export default function Ventas() {
                       <Input
                         placeholder="Ej: 10000"
                         type="text"
-                        value={item.montoCop ? formatearNumero(item.montoCop) : ""}
+                        value={item.montoCop ? formatearNumero(item.montoCop, 0) : ""}
                         onChange={e => {
                           const monto = limpiarNumero(e.target.value);
                           
-                          const kilos = monto / item.producto.price;
+                          const kilos = Math.round((monto / item.producto.price) * 1000) / 1000; // Redondear a 3 decimales
 
                           // 🔹 VALIDAR QUE NO EXCEDA STOCK DISPONIBLE
-                          if (monto > 0 && kilos > item.producto.stock) {
-                            toast.error(`Stock máximo disponible: ${formatearNumero(item.producto.stock, 3)} kg (${formatearNumero(kgToLb(item.producto.stock), 2)} lb) ($${formatearNumero(item.producto.stock * item.producto.price, 2)})`);
+                          const productoActual = productos.find(p => p.id === item.producto.id);
+                          const stockActual = productoActual ? productoActual.stock : 0;
+                          
+                          if (monto > 0 && kilos > stockActual) {
+                            toast.error(`Stock máximo disponible: ${formatearNumero(stockActual, 1)} kg (${formatearNumero(kgToLb(stockActual), 2)} lb) ($${formatearNumero(stockActual * item.producto.price)})`);
                             return;
                           }
 
@@ -450,29 +466,29 @@ export default function Ventas() {
                         }}
                       />
 
-                      {/* Mostrar conversión en LIBRAS CON DECIMALES */}
+                      {/* Mostrar conversión en LIBRAS */}
                       {item.kilosVendidos ? (
                         <div className="text-xs mt-1 text-gray-600">
-                          Equivale a {formatearNumero(kgToLb(item.kilosVendidos), 2)} lb ({formatearNumero(item.kilosVendidos, 3)} kg)
+                          Equivale a {formatearNumero(kgToLb(item.kilosVendidos), 2)} lb
                         </div>
                       ) : null}
 
-                      {/* 🔹 ALERTA SI QUEDA POCO STOCK CON VALOR EN COP Y LB CON DECIMALES */}
-                      {item.kilosVendidos && item.kilosVendidos > 0 ? (
-                        <div className={`text-xs mt-1 ${
-                          item.producto.stock - item.kilosVendidos < 0.001
-                            ? 'text-red-600 font-semibold'
-                            : 'text-amber-600'
-                        }`}>
-                          {item.producto.stock - item.kilosVendidos < 0
-                            ? `❌ Insuficiente. Stock: ${formatearNumero(item.producto.stock, 3)} kg (${formatearNumero(kgToLb(item.producto.stock), 2)} lb) ($${formatearNumero(item.producto.stock * item.producto.price, 2)})`
-                            : `⚠️ Disponible después: ${formatearNumero(item.producto.stock - item.kilosVendidos, 3)} kg (${formatearNumero(kgToLb(item.producto.stock - item.kilosVendidos), 2)} lb) ($${formatearNumero((item.producto.stock - item.kilosVendidos) * item.producto.price, 2)})`
-                          }
-                        </div>
-                      ) : null}
+                      {/* 🔹 ALERTA STOCK DISPONIBLE EN LIBRAS */}
+                      {item.kilosVendidos && item.kilosVendidos > 0 ? (() => {
+                        const productoActual = productos.find(p => p.id === item.producto.id);
+                        const stockActual = productoActual ? productoActual.stock : 0;
+                        return (
+                          <div className="text-xs mt-1 text-amber-600">
+                            {stockActual - item.kilosVendidos < 0
+                              ? `❌ Insuficiente. Stock disponible: ${formatearNumero(kgToLb(stockActual), 2)} lb`
+                              : `⚠️ Disponible después: ${formatearNumero(kgToLb(stockActual - item.kilosVendidos), 2)} lb`
+                            }
+                          </div>
+                        );
+                      })() : null}
 
                       <div className="mt-2 font-semibold">
-                        Subtotal: ${formatearNumero(item.montoCop || 0, 2)}
+                        Subtotal: ${formatearNumero(item.montoCop || 0)}
                       </div>
 
                       <Button
@@ -492,7 +508,7 @@ export default function Ventas() {
                       >
                         <Minus />
                       </Button>
-                      <span className="font-bold">{formatearNumero(item.cantidad, 2)}</span>
+                      <span className="font-bold">{formatearNumero(item.cantidad)}</span>
                       <Button 
                         size="icon" 
                         onClick={() => aumentarCantidad(item.producto.id)}
@@ -510,7 +526,7 @@ export default function Ventas() {
                       </Button>
 
                       <div className="ml-auto font-semibold">
-                        ${formatearNumero(item.producto.price * item.cantidad, 2)}
+                        ${formatearNumero(item.producto.price * item.cantidad)}
                       </div>
                     </div>
                   )}
@@ -519,7 +535,7 @@ export default function Ventas() {
 
               <div className="text-lg font-semibold flex justify-between">
                 <span>Total:</span>
-                <span>${formatearNumero(total, 2)}</span>
+                <span>${formatearNumero(total)}</span>
               </div>
 
               {/* 🔹 MÉTODO DE PAGO */}
@@ -544,7 +560,7 @@ export default function Ventas() {
                   <Input
                     placeholder="Ingresa monto recibido"
                     type="text"
-                    value={montoRecibido ? formatearNumero(montoRecibido) : ""}
+                    value={montoRecibido ? formatearNumero(montoRecibido, 0) : ""}
                     onChange={e => setMontoRecibido(String(limpiarNumero(e.target.value)))}
                     className="mb-3"
                   />
@@ -553,21 +569,21 @@ export default function Ventas() {
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span>Total a pagar:</span>
-                        <span className="font-medium">${formatearNumero(total, 2)}</span>
+                        <span className="font-medium">${formatearNumero(total)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Monto recibido:</span>
-                        <span className="font-medium">${formatearNumero(Number(montoRecibido), 2)}</span>
+                        <span className="font-medium">${formatearNumero(Number(montoRecibido))}</span>
                       </div>
                       <div className="border-t pt-2 flex justify-between">
                         <span className="font-semibold">Cambio:</span>
                         <span className={`font-bold text-lg ${Number(montoRecibido) >= total ? 'text-green-600' : 'text-red-600'}`}>
-                          ${formatearNumero(Number(montoRecibido) - total, 2)}
+                          ${formatearNumero(Number(montoRecibido) - total)}
                         </span>
                       </div>
                       {Number(montoRecibido) < total && (
                         <div className="text-red-600 text-xs mt-2">
-                          ⚠️ Monto insuficiente. Falta: ${formatearNumero(total - Number(montoRecibido), 2)}
+                          ⚠️ Monto insuficiente. Falta: ${formatearNumero(total - Number(montoRecibido))}
                         </div>
                       )}
                     </div>

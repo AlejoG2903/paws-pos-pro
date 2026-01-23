@@ -32,22 +32,47 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const checkAuth = async () => {
     const token = localStorage.getItem('auth_token');
+    const cachedUser = localStorage.getItem('cached_user');
     
     if (!token) {
+      localStorage.removeItem('cached_user');
       setLoading(false);
       return;
     }
 
+    // Siempre restaurar del caché si existe
+    if (cachedUser) {
+      try {
+        const parsedUser = JSON.parse(cachedUser);
+        setUser(parsedUser);
+      } catch (e) {
+        console.error('Error parseando usuario cacheado:', e);
+      }
+    }
+    
+    setLoading(false);
+
+    // Comentado temporalmente: verificación con servidor
+    // Si necesitas reactivarla, descomenta este bloque
+    /*
     try {
       const userData = await authAPI.getMe();
       setUser(userData);
+      localStorage.setItem('cached_user', JSON.stringify(userData));
     } catch (error) {
       console.error('Error verificando autenticación:', error);
-      removeAuthToken();
-      setUser(null);
-    } finally {
-      setLoading(false);
+      
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      if (errorMsg.includes('401') || errorMsg.includes('403')) {
+        console.log('Token inválido, cerrando sesión');
+        removeAuthToken();
+        localStorage.removeItem('cached_user');
+        setUser(null);
+      } else {
+        console.warn('Error temporal, manteniendo sesión:', errorMsg);
+      }
     }
+    */
   };
 
   const login = async (username: string, password: string): Promise<boolean> => {
@@ -59,6 +84,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const userData = await authAPI.getMe();
       setUser(userData);
       
+      // Guardar usuario en caché
+      localStorage.setItem('cached_user', JSON.stringify(userData));
+      
       return true;
     } catch (error) {
       console.error('Error en login:', error);
@@ -68,6 +96,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = () => {
     removeAuthToken();
+    localStorage.removeItem('cached_user');
     setUser(null);
   };
 
