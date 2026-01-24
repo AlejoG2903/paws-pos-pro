@@ -165,6 +165,7 @@ interface StatsCardsProps {
   promedioVenta: number;
   metodoPrincipal: PaymentData | null;
   gananciaTotal: number;
+  isAdmin: boolean;
 }
 
 const StatsCards = ({
@@ -176,9 +177,10 @@ const StatsCards = ({
   promedioVenta,
   metodoPrincipal,
   gananciaTotal,
+  isAdmin,
 }: StatsCardsProps) => {
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div className={`grid gap-4 ${isAdmin ? 'md:grid-cols-2 lg:grid-cols-4' : 'md:grid-cols-2 lg:grid-cols-3'}`}>
       {/* Ventas del día */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -212,18 +214,20 @@ const StatsCards = ({
       </Card>
 
       {/* Ganancia Total */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Ganancia Total</CardTitle>
-          <PiggyBank className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">
-            ${formatearNumero(gananciaTotal)}
-          </div>
-          <p className="text-xs text-muted-foreground">Suma total de ganancias del período</p>
-        </CardContent>
-      </Card>
+      {isAdmin && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Ganancia Total</CardTitle>
+            <PiggyBank className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              ${formatearNumero(gananciaTotal)}
+            </div>
+            <p className="text-xs text-muted-foreground">Suma total de ganancias del período</p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Métodos de pago más usado */}
       <Card>
@@ -574,13 +578,12 @@ const GananciasTable = ({ fechaInicio, fechaFin, data, loading }: { fechaInicio:
                   <th className="px-4 py-3 text-left text-sm font-medium">Precio</th>
                   <th className="px-4 py-3 text-right text-sm font-medium">Total Vendido</th>
                   <th className="px-4 py-3 text-right text-sm font-medium">Ganancia</th>
-                  <th className="px-4 py-3 text-right text-sm font-medium">Margen</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                       <div className="flex items-center justify-center gap-2">
                         <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                         Cargando datos...
@@ -589,17 +592,13 @@ const GananciasTable = ({ fechaInicio, fechaFin, data, loading }: { fechaInicio:
                   </tr>
                 ) : data.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                       No hay datos de ganancias en este rango
                     </td>
                   </tr>
                 ) : (
                   <>
                     {data.map((row) => {
-                      const margen = row.precio && row.costo && row.precio > 0 
-                        ? ((row.precio - row.costo) / row.precio) * 100 
-                        : null;
-                      
                       return (
                         <tr key={row.nombre} className="border-b hover:bg-muted/30">
                           <td className="px-4 py-3 text-sm font-medium">{row.nombre}</td>
@@ -618,11 +617,6 @@ const GananciasTable = ({ fechaInicio, fechaFin, data, loading }: { fechaInicio:
                           }`}>
                             {row.ganancia != null ? `$${formatearNumero(row.ganancia)}` : '—'}
                           </td>
-                          <td className={`px-4 py-3 text-right text-sm font-medium ${
-                            (margen || 0) >= 0 ? 'text-green-600' : 'text-red-600'
-                          }`}>
-                            {margen != null ? `${margen.toFixed(1)}%` : '—'}
-                          </td>
                         </tr>
                       );
                     })}
@@ -638,9 +632,6 @@ const GananciasTable = ({ fechaInicio, fechaFin, data, loading }: { fechaInicio:
                       <td className="px-4 py-3 text-right">${formatearNumero(totalVendido)}</td>
                       <td className={`px-4 py-3 text-right ${totalGanancia >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                         ${formatearNumero(totalGanancia)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {totalVendido > 0 ? `${((totalGanancia / totalVendido) * 100).toFixed(1)}%` : '—'}
                       </td>
                     </tr>
                   </>
@@ -814,6 +805,9 @@ const SalesTable = ({
 // ============================================================================
 
 const Dashboard = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  
   // Estados
   const [fechaInicio, setFechaInicio] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [fechaFin, setFechaFin] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
@@ -881,8 +875,10 @@ const Dashboard = () => {
     fetchVentasHoy();
   }, []);
 
-  // Cargar productos del inventario
+  // Cargar productos del inventario (solo para admins)
   useEffect(() => {
+    if (!isAdmin) return;
+    
     const fetchProductos = async () => {
       try {
         setLoadingProductos(true);
@@ -899,7 +895,7 @@ const Dashboard = () => {
     };
 
     fetchProductos();
-  }, []);
+  }, [isAdmin]);
 
   // Manejar cambio de rango
   const handleRangoChange = (rango: string) => {
@@ -971,8 +967,10 @@ const Dashboard = () => {
     return map;
   }, [productosInv]);
 
-  // Datos para la tabla de ganancias
+  // Datos para la tabla de ganancias (solo para admins)
   const gananciasData: GananciaRow[] = useMemo(() => {
+    if (!isAdmin) return [];
+    
     const agg = new Map<string, { 
       nombreOriginal: string; 
       cantidad: number; 
@@ -1015,16 +1013,9 @@ const Dashboard = () => {
         precio = v.totalVendido / v.cantidad;
       }
 
-      // Calcular ganancia
-      if (precio !== null && costo !== null) {
-        if (v.esKg) {
-          // Para productos por KG: costo es por unidad de peso
-          gananciaTotal = v.totalVendido - (costo * v.cantidad);
-        } else {
-          // Para productos unitarios
-          const gananciaUnit = precio - costo;
-          gananciaTotal = gananciaUnit * v.cantidad;
-        }
+      // Calcular ganancia: siempre total vendido menos costo total
+      if (costo !== null) {
+        gananciaTotal = v.totalVendido - (costo * v.cantidad);
       }
 
       return {
@@ -1037,18 +1028,17 @@ const Dashboard = () => {
       };
     });
 
-    // Filtrar productos sin costo o precio (opcional)
-    const filteredRows = rows.filter(row => row.costo != null && row.precio != null);
-    filteredRows.sort((a, b) => (b.ganancia ?? -Infinity) - (a.ganancia ?? -Infinity));
+    // Incluir todos los productos, incluso sin costo
+    rows.sort((a, b) => (b.ganancia ?? -Infinity) - (a.ganancia ?? -Infinity));
     
-    return filteredRows;
-  }, [ventasFiltradas, inventarioMap]);
+    return rows;
+  }, [ventasFiltradas, inventarioMap, isAdmin]);
 
-  // Ganancia total
-  const gananciaTotal = useMemo(() => 
-    gananciasData.reduce((sum, r) => sum + (r.ganancia || 0), 0), 
-    [gananciasData]
-  );
+  // Ganancia total (solo para admins)
+  const gananciaTotal = useMemo(() => {
+    if (!isAdmin) return 0;
+    return gananciasData.reduce((sum, r) => sum + (r.ganancia || 0), 0);
+  }, [gananciasData, isAdmin]);
 
   // Métodos de pago
   const pagosPorMetodo = useMemo(() => {
@@ -1184,16 +1174,17 @@ const Dashboard = () => {
           promedioVenta={promedioVenta}
           metodoPrincipal={metodoPrincipal}
           gananciaTotal={gananciaTotal}
+          isAdmin={isAdmin}
         />
 
         {/* Tabs con gráficos y tablas */}
         <Tabs defaultValue="tabla" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-5' : 'grid-cols-4'}`}>
             <TabsTrigger value="tabla">🧾 Detalle de Ventas</TabsTrigger>
             <TabsTrigger value="metodos">💳 Métodos de Pago</TabsTrigger>
             <TabsTrigger value="tendencia">📈 Tendencia Diaria</TabsTrigger>
             <TabsTrigger value="productos">🔝 Top Productos</TabsTrigger>
-            <TabsTrigger value="ganancias">💰 Ganancias</TabsTrigger>
+            {isAdmin && <TabsTrigger value="ganancias">💰 Ganancias</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="tabla" className="space-y-4">
@@ -1218,14 +1209,16 @@ const Dashboard = () => {
             <TopProductsChart data={topProductos} />
           </TabsContent>
 
-          <TabsContent value="ganancias" className="space-y-4">
-            <GananciasTable 
-              fechaInicio={fechaInicio} 
-              fechaFin={fechaFin} 
-              data={gananciasData} 
-              loading={loading || loadingProductos} 
-            />
-          </TabsContent>
+          {isAdmin && (
+            <TabsContent value="ganancias" className="space-y-4">
+              <GananciasTable 
+                fechaInicio={fechaInicio} 
+                fechaFin={fechaFin} 
+                data={gananciasData} 
+                loading={loading || loadingProductos} 
+              />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </Layout>
